@@ -28,6 +28,8 @@ historigit has not been released, and cannot be until historica is: decision
 
 <!-- git-cliff:begin — generated; edits here are overwritten -->
 
-_No commits since the last tag._
+### Added
+
+- the repository, its CI, and the boundary a conversion works under ([`b35d2af`](https://github.com/diaryx-org/historigit/commit/b35d2af90e4486a9053b8010c36b597425f20219))
 
 <!-- git-cliff:end -->
