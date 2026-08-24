@@ -18,3 +18,4 @@
 #![deny(missing_docs)]
 
 pub mod stream;
+pub mod tree;
