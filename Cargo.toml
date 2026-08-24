@@ -1,0 +1,46 @@
+[package]
+name = "historigit"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Conversion between git repositories and Historica stores"
+license.workspace = true
+repository.workspace = true
+readme = "README.md"
+documentation = "https://docs.rs/historigit"
+# What a person searching crates.io would type. They arrive holding a git
+# repository and wanting it somewhere else, or holding a store and wanting it
+# where their colleagues are, so `git` and `version-control` are the shelf and
+# `convert`, `import`, `export` are the errand.
+keywords = ["git", "version-control", "convert", "import", "export"]
+categories = ["development-tools", "command-line-utilities"]
+
+# `xtask` is historigit's CI, as a program, exactly as it is in historica:
+# `cargo xtask <job>` runs one CI job and the workflow runs nothing else.
+[workspace]
+members = ["xtask"]
+
+# One `version = "…"` line for the whole repository, which is what `cargo xtask
+# bump` rewrites and what the package inherits. Keeping it here rather than in
+# `[package]` is what lets the release tooling assert that exactly one such line
+# exists — see `xtask/src/release.rs`.
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+# Minimum supported Rust version, enforced by the `msrv` CI job, which reads
+# this value. It cannot go below historica's own floor; it will rise to whatever
+# the git library chosen in a later decision needs.
+rust-version = "1.88"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/diaryx-org/historigit"
+
+[dependencies]
+# Both spellings on purpose. The path is what builds: historica is not on
+# crates.io yet, so nothing else would resolve. The version is what publishing
+# needs, and states the promise this crate is written against — historica 1.0's
+# semver API, decision 0001's only door into the store.
+#
+# Two consequences, both deliberate. A clone of this repository alone does not
+# build until historica is published or checked out beside it, and `cargo
+# publish` here cannot succeed before historica has been published there.
+historica = { version = "1.0", path = "../historica" }
