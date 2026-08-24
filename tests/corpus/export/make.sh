@@ -59,6 +59,8 @@ git commit -q --allow-empty -m "Empty"
 git tag light
 git tag -a annotated -m "An annotated tag"
 
-git fast-export --all -M > "$here/all.fi"
+# `--show-original-ids` is decision 0003: the object ID is what a change
+# ID is derived from, and it reaches the stream no other way.
+git fast-export --all -M --show-original-ids > "$here/all.fi"
 cd "$here" && shasum -a 256 all.fi invalid/*.fi > MANIFEST
 echo "wrote $here/all.fi"

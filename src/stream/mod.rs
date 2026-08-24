@@ -186,6 +186,10 @@ pub struct Tag {
     pub mark: Option<Mark>,
     /// What it tags.
     pub from: DataRef,
+    /// `original-oid`, from `--show-original-ids`. It comes after `from` here
+    /// rather than after `mark` as it does on a blob or a commit, because that
+    /// is where git writes it.
+    pub original_oid: Option<String>,
     /// Who made it. A tag written without one says so.
     pub tagger: Option<Person>,
     /// The tag message.

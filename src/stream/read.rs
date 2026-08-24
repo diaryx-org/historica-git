@@ -247,6 +247,7 @@ impl<R: BufRead> Reader<R> {
                 ));
             }
         };
+        let original_oid = self.optional_field(b"original-oid ")?;
         let tagger = match self.optional_field(b"tagger ")? {
             Some(line) => Some(self.person(&line)?),
             None => None,
@@ -256,6 +257,7 @@ impl<R: BufRead> Reader<R> {
             name,
             mark,
             from,
+            original_oid: original_oid.map(|oid| String::from_utf8_lossy(&oid).into_owned()),
             tagger,
             message,
         })
