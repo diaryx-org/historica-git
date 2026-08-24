@@ -44,3 +44,8 @@ repository = "https://github.com/diaryx-org/historigit"
 # build until historica is published or checked out beside it, and `cargo
 # publish` here cannot succeed before historica has been published there.
 historica = { version = "1.0", path = "../historica" }
+# Decision 0003 derives a file identifier as `SHA-256` of the commit's object ID
+# and a counter, so that a conversion re-run produces the store it produced
+# before. It is the hash historica already uses, and the derivation is one a
+# person can check with the `shasum` they already have.
+sha2 = "0.11.0"

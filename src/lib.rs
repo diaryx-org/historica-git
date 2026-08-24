@@ -17,5 +17,6 @@
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
+pub mod identity;
 pub mod stream;
 pub mod tree;
