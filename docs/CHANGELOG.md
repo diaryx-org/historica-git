@@ -32,6 +32,11 @@ historigit has not been released, and cannot be until historica is: decision
 
 - the repository, its CI, and the boundary a conversion works under ([`b35d2af`](https://github.com/diaryx-org/historigit/commit/b35d2af90e4486a9053b8010c36b597425f20219))
 - **stream** — read what git fast-export writes ([`5261ef1`](https://github.com/diaryx-org/historigit/commit/5261ef12da01564e0c3bd0a220169f87e863d660))
-- **tree** — replay a stream into the tree at each commit ([`fba2cd1`](https://github.com/diaryx-org/historigit/commit/fba2cd18701d23e91f93fe6d57bb2d5ca9d84170))
+- **tree** — replay a stream into the tree at each commit ([`a3f8dd0`](https://github.com/diaryx-org/historigit/commit/a3f8dd05d1859fe77933a3c66c6e1d174f0e86c1))
+- **identity** — derive a change from the commit's object ID ([`0be7985`](https://github.com/diaryx-org/historigit/commit/0be798563d1f7eb762249b683cba90f81e3bdf56))
+
+### Fixed
+
+- **stream** — read the object ID a tag carries ([`ff8e64c`](https://github.com/diaryx-org/historigit/commit/ff8e64caa69107692bad6f57d496b53a2b20b961))
 
 <!-- git-cliff:end -->
