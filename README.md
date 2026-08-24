@@ -12,9 +12,17 @@ and that is all this is.
 
 ## Status
 
-Nothing is converted yet. What exists is the repository, its CI, and
-[decision 0001](docs/decisions/0001-what-crosses-the-boundary.md), which fixes
-the rule everything after it is written under:
+Nothing is converted yet. What exists is the reading half of the bridge —
+[`stream`](src/stream/) parses what `git fast-export` writes — and the two
+decisions everything after them is written under.
+
+[Decision 0002](docs/decisions/0002-the-bridge-is-a-stream.md) makes the
+fast-import stream the whole of historigit's contact with git: no git library
+is linked and no git object is written by this crate. Git itself is the
+dependency, and must be on `PATH`.
+
+[Decision 0001](docs/decisions/0001-what-crosses-the-boundary.md) fixes the
+boundary with historica:
 
 - historigit depends on historica's **published** API and nothing else. A fact
   the API does not expose is a change to historica, not a hole opened here.
@@ -29,10 +37,20 @@ the rule everything after it is written under:
 - Whatever crosses can be checked by hand, with `git cat-file` on one side and
   `shasum -a 256` on the other.
 
-Still open, and each its own decision when it is answered: which git library
-(or whether `fast-import` and `fast-export` streams mean none is needed), where
-the commit-to-revision correspondence is filed, what the commands are called,
-and whether a round trip has to be exact.
+Still open, and each its own decision when it is answered: where the
+commit-to-revision correspondence is filed, what the commands are called,
+whether a round trip has to be exact, and what a conversion does with a signed
+commit or tag.
+
+The corpus is a stream git wrote, checked in byte-exact, and it checks with the
+tool that is already installed:
+
+```console
+cd tests/corpus/export && shasum -a 256 -c MANIFEST
+```
+
+`tests/corpus/export/make.sh` rebuilds it — run it, read the diff, and commit
+that diff deliberately.
 
 ## Building
 

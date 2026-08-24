@@ -1,0 +1,3 @@
+# The corpus is byte-exact: a stream is what git wrote, and one fixture
+# deliberately contains NUL bytes. Git must not normalise any of it.
+tests/corpus/** -text
