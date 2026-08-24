@@ -160,6 +160,7 @@ name = "historigit"
 version = "0.1.0"
 dependencies = [
  "historica",
+ "jiff",
  "sha2",
 ]
 

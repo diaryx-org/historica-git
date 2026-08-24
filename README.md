@@ -12,14 +12,32 @@ and that is all this is.
 
 ## Status
 
-Nothing is converted yet. What exists is the reading half of the bridge —
-[`stream`](src/stream/) parses what `git fast-export` writes — and the two
-decisions everything after them is written under.
+One direction works: a git repository converts into a Historica store.
+
+```console
+$ historigit import ~/Code/some-repo ~/Code/some-repo-as-historica
+read 6 commits, recorded 5 revisions in /Users/adam/Code/some-repo-as-historica/history
+
+what did not cross:
+  - 6 commits name a committer other than their author; historica records one
+    person and the author is the one it keeps
+  - one annotated tag did not cross; historica has bookmarks, and nothing yet
+    points one at a converted revision
+```
+
+The other direction — a store written out as a git repository — is not built.
+Neither is anything that names a bookmark at a converted revision.
+
+Three decisions everything is written under.
 
 [Decision 0002](docs/decisions/0002-the-bridge-is-a-stream.md) makes the
 fast-import stream the whole of historigit's contact with git: no git library
 is linked and no git object is written by this crate. Git itself is the
 dependency, and must be on `PATH`.
+
+[Decision 0003](docs/decisions/0003-a-change-is-the-commit-it-came-from.md)
+takes a change ID from the git commit's object ID rather than minting one, so
+converting a repository twice produces one history rather than two.
 
 [Decision 0001](docs/decisions/0001-what-crosses-the-boundary.md) fixes the
 boundary with historica:
@@ -38,9 +56,8 @@ boundary with historica:
   `shasum -a 256` on the other.
 
 Still open, and each its own decision when it is answered: where the
-commit-to-revision correspondence is filed, what the commands are called,
-whether a round trip has to be exact, and what a conversion does with a signed
-commit or tag.
+commit-to-revision correspondence is filed, whether a round trip has to be
+exact, and where refs and tags go.
 
 The corpus is a stream git wrote, checked in byte-exact, and it checks with the
 tool that is already installed:

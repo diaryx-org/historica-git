@@ -18,5 +18,6 @@
 #![deny(missing_docs)]
 
 pub mod identity;
+pub mod import;
 pub mod stream;
 pub mod tree;
