@@ -12,8 +12,8 @@ use std::io::Cursor;
 use std::path::PathBuf;
 use std::rc::Rc;
 
-use historigit::stream::{Command, Reader};
-use historigit::tree::{Error, Held, Tree, Trees};
+use historica_git::stream::{Command, Reader};
+use historica_git::tree::{Error, Held, Tree, Trees};
 
 /// Every commit's tree, by the commit's message, which is how a person reading
 /// the fixture would name them.

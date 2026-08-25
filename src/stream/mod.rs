@@ -1,9 +1,9 @@
 //! The fast-import stream: what git says a repository is when asked in text.
 //!
-//! Decision 0002 makes this the whole of historigit's contact with git. Reading
-//! a repository is `git fast-export` writing this stream; writing one is `git
-//! fast-import` reading it. There is no git library here and no git object is
-//! ever written by this crate.
+//! Decision 0002 makes this the whole of historica-git's contact with git.
+//! Reading a repository is `git fast-export` writing this stream; writing one
+//! is `git fast-import` reading it. There is no git library here and no git
+//! object is ever written by this crate.
 //!
 //! The model below is the stream's own vocabulary rather than a translation of
 //! it. That is deliberate: a parser that renamed things as it went would make

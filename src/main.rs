@@ -3,14 +3,14 @@
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use historigit::import;
+use historica_git::import;
 
 fn main() -> ExitCode {
     let arguments: Vec<String> = std::env::args().skip(1).collect();
     match run(&arguments.iter().map(String::as_str).collect::<Vec<_>>()) {
         Ok(()) => ExitCode::SUCCESS,
         Err(message) => {
-            eprintln!("historigit: {message}");
+            eprintln!("historica-git: {message}");
             ExitCode::FAILURE
         }
     }
@@ -23,7 +23,7 @@ fn run(arguments: &[&str]) -> Result<(), String> {
             Ok(())
         }
         ["-V" | "--version"] => {
-            println!("historigit {}", env!("CARGO_PKG_VERSION"));
+            println!("historica-git {}", env!("CARGO_PKG_VERSION"));
             Ok(())
         }
         ["import", repository, folder] => convert(repository, folder),
@@ -59,9 +59,9 @@ fn convert(repository: &str, folder: &str) -> Result<(), String> {
 }
 
 const USAGE: &str = "\
-historigit converts a git repository into a Historica store.
+historica-git converts a git repository into a Historica store.
 
-usage: historigit <command>
+usage: historica-git <command>
 
 commands:
 

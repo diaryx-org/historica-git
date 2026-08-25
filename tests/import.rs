@@ -9,7 +9,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use historica::store::{STORE_DIR, Store};
-use historigit::import;
+use historica_git::import;
 
 fn corpus() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/corpus/export/all.fi")

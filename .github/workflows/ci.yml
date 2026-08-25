@@ -1,5 +1,5 @@
 name: CI
-# Build, lint, and test historigit on every push and pull request.
+# Build, lint, and test historica-git on every push and pull request.
 #
 # There is deliberately almost nothing here. Every job is `cargo xtask <id>`, and
 # the list of jobs comes from `cargo xtask ci-matrix` rather than from this file,

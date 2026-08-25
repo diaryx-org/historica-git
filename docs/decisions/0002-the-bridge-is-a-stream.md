@@ -1,6 +1,6 @@
 # 0002 — The bridge is a stream
 
-Decision 0001 left open how historigit reaches a git repository at all. Two
+Decision 0001 left open how historica-git reaches a git repository at all. Two
 answers: link a git library and read objects, or run git and speak the
 interchange format it already has.
 
@@ -8,7 +8,7 @@ interchange format it already has.
 
 - **Both directions are the fast-import stream.** Reading a repository is
   `git fast-export` writing that stream; writing one is `git fast-import`
-  reading it. historigit links no git library and writes no git object.
+  reading it. historica-git links no git library and writes no git object.
 
 - **git is a dependency, and a declared one.** It must be on `PATH`, at a
   version holding the flags a conversion uses. The floor is checked and

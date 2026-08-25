@@ -1,4 +1,4 @@
-# git-cliff configuration for historigit.
+# git-cliff configuration for historica-git.
 #
 # One consumer, and it is a program rather than a person: `cargo xtask changelog`
 # regenerates the marked region inside `docs/CHANGELOG.md`'s `## Unreleased`
@@ -51,7 +51,7 @@ body = """
 {% for group, commits in commits | group_by(attribute="group") %}
 ### {{ group | striptags | trim }}
 {% for commit in commits %}
-- {% if commit.scope %}**{{ commit.scope }}** — {% endif %}{{ commit.message }} ([`{{ commit.id | truncate(length=7, end="") }}`](https://github.com/diaryx-org/historigit/commit/{{ commit.id }}))
+- {% if commit.scope %}**{{ commit.scope }}** — {% endif %}{{ commit.message }} ([`{{ commit.id | truncate(length=7, end="") }}`](https://github.com/diaryx-org/historica-git/commit/{{ commit.id }}))
 {%- endfor %}
 {% endfor %}
 {%- set_global notes = [] -%}
@@ -76,8 +76,8 @@ body = """
 conventional_commits = true
 # Unconventional commits are kept rather than dropped, so the catch-all parser
 # at the bottom can surface them for triage instead of losing them silently.
-# historigit has been written to the convention from its first commit, so that
-# bucket should stay empty — it is a tripwire, not a stage.
+# historica-git has been written to the convention from its first commit, so
+# that bucket should stay empty — it is a tripwire, not a stage.
 filter_unconventional = false
 filter_commits = false
 protect_breaking_commits = true

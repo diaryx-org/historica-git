@@ -1,11 +1,11 @@
 //! Cutting a release, as one program.
 //!
-//! historigit releases on a tag: pushing `vX.Y.Z` starts `release.yml`, which
-//! cuts the GitHub release and writes its body from the changelog. Everything
-//! before that push is mechanical and easy to get half-right by hand — the
-//! version lives in the manifest and the lockfile both, and the changelog's
-//! unreleased region has to be cut into a released section — so it lives here
-//! instead:
+//! historica-git releases on a tag: pushing `vX.Y.Z` starts `release.yml`,
+//! which cuts the GitHub release and writes its body from the changelog.
+//! Everything before that push is mechanical and easy to get half-right by
+//! hand — the version lives in the manifest and the lockfile both, and the
+//! changelog's unreleased region has to be cut into a released section — so it
+//! lives here instead:
 //!
 //!     cargo xtask version                 what the repository calls itself
 //!     cargo xtask bump <patch|minor|major|X.Y.Z>
@@ -41,7 +41,7 @@ const END: &str = "<!-- git-cliff:end -->";
 const EMPTY_REGION: &str = "_No commits since the last tag._";
 
 /// Where a reader is sent for the rest of the history, from a release body.
-const REPO: &str = "https://github.com/diaryx-org/historigit";
+const REPO: &str = "https://github.com/diaryx-org/historica-git";
 
 // ---------------------------------------------------------------------------
 // Versions
@@ -568,7 +568,7 @@ fn preflight(sh: &Sh, tag: &str) -> Result<()> {
     let branch = sh.capture("git", &["rev-parse", "--abbrev-ref", "HEAD"])?;
     if branch.trim() != "main" {
         return Err(format!(
-            "on branch `{}`, and historigit releases from `main`",
+            "on branch `{}`, and historica-git releases from `main`",
             branch.trim()
         ));
     }

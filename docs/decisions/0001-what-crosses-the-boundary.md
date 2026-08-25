@@ -1,6 +1,6 @@
 # 0001 — What crosses the boundary
 
-historigit converts between git repositories and Historica stores. It is its
+historica-git converts between git repositories and Historica stores. It is its
 own repository rather than a second crate beside historica, and that is the
 first thing to write down — not because directory layout deserves a decision
 document, but because the reason is a rule about what this tool is allowed to
@@ -8,7 +8,7 @@ ask for, and that rule shapes everything after it.
 
 Historica cut 1.0 on two promises: the format, which decision 0047 spells on
 line one, and an ordinary semver Rust API. Neither promise is worth anything
-if its only serious caller is one that never has to keep it. historigit is
+if its only serious caller is one that never has to keep it. historica-git is
 that caller — the first consumer that wants more of a store than a person at a
 command line does — so the useful thing it can do for historica, before it
 converts a single commit, is to be unable to cheat.
@@ -19,13 +19,13 @@ own dependencies and its own grammar, and historica gains neither.
 
 ## The decision
 
-- **historigit depends on historica's published API and nothing else.** No
+- **historica-git depends on historica's published API and nothing else.** No
   private path, no `pub(crate)` reached through a workspace, no patched fork.
   If a conversion needs a fact the API does not expose, that is a change to
   historica — with a version number on it and, if it touches the format, a
   decision document behind it — rather than a hole opened here.
 
-- **The store is written by historica and by nothing else.** historigit never
+- **The store is written by historica and by nothing else.** historica-git never
   writes a file under `history/` itself. `check` is historica's invariant to
   hold, and a conversion that hand-writes a revision document is a second
   implementation of the format. The format has one.
@@ -59,7 +59,7 @@ own dependencies and its own grammar, and historica gains neither.
 - **Where the commit-to-revision correspondence is filed** — in the store, in
   the git repository, or in a file that belongs to neither.
 - **What the commands are called.** `export` is taken: decision 0042 gives it
-  to historica for a copy of a store to take away, so `historigit export`
+  to historica for a copy of a store to take away, so `historica-git export`
   cannot mean "write a git repository" without a collision in the reader's
   head.
 - **Whether a round trip has to be exact**, and what it is allowed to lose if
@@ -86,7 +86,7 @@ about the format.
 
 ## Consequences
 
-- historigit cannot be published before historica is. The manifest carries
+- historica-git cannot be published before historica is. The manifest carries
   both a `version` and a `path` for historica so that the build works today
   and the publish is honest later; a clone of this repository alone does not
   build until one of those two things is true.

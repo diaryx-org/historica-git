@@ -1,4 +1,4 @@
-//! historigit's CI, as one program.
+//! historica-git's CI, as one program.
 //!
 //! Every job the CI workflow runs is one entry in [`JOBS`] and one
 //! `cargo xtask <id>` invocation. The workflow itself holds no build knowledge:
@@ -109,7 +109,7 @@ fn test(sh: &Sh) -> Result<()> {
 }
 
 /// Build on the crate's declared minimum supported Rust version. A build, not a
-/// test run: MSRV is a promise about who can *compile* historigit, and the
+/// test run: MSRV is a promise about who can *compile* historica-git, and the
 /// dev-dependencies and test tooling need not hold to it.
 ///
 /// The version is read from `workspace.package.rust-version`, so the pin can
@@ -218,8 +218,8 @@ fn ci_matrix() -> String {
 
 fn usage() -> String {
     let mut out = String::from(
-        "historigit's CI, and its releases. Each job below is exactly what the CI \
-         workflow runs.\n\n\
+        "historica-git's CI, and its releases. Each job below is exactly what \
+         the CI workflow runs.\n\n\
          usage: cargo xtask <command>\n\njobs:\n\n",
     );
     for job in JOBS {

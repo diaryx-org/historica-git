@@ -8,8 +8,8 @@ use std::fs;
 use std::io::Cursor;
 use std::path::PathBuf;
 
-use historigit::identity::Identity;
-use historigit::stream::{Command, Reader};
+use historica_git::identity::Identity;
+use historica_git::stream::{Command, Reader};
 
 #[test]
 fn the_corpus_commits_convert_to_changes_that_can_be_read_across() {

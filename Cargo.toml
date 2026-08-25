@@ -1,5 +1,5 @@
 [package]
-name = "historigit"
+name = "historica-git"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -7,7 +7,7 @@ description = "Conversion between git repositories and Historica stores"
 license.workspace = true
 repository.workspace = true
 readme = "README.md"
-documentation = "https://docs.rs/historigit"
+documentation = "https://docs.rs/historica-git"
 # What a person searching crates.io would type. They arrive holding a git
 # repository and wanting it somewhere else, or holding a store and wanting it
 # where their colleagues are, so `git` and `version-control` are the shelf and
@@ -15,7 +15,7 @@ documentation = "https://docs.rs/historigit"
 keywords = ["git", "version-control", "convert", "import", "export"]
 categories = ["development-tools", "command-line-utilities"]
 
-# `xtask` is historigit's CI, as a program, exactly as it is in historica:
+# `xtask` is historica-git's CI, as a program, exactly as it is in historica:
 # `cargo xtask <job>` runs one CI job and the workflow runs nothing else.
 [workspace]
 members = ["xtask"]
@@ -32,7 +32,7 @@ edition = "2024"
 # the git library chosen in a later decision needs.
 rust-version = "1.88"
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/diaryx-org/historigit"
+repository = "https://github.com/diaryx-org/historica-git"
 
 [dependencies]
 # Both spellings on purpose. The path is what builds: historica is not on

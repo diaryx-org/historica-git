@@ -1,4 +1,4 @@
-# historigit
+# historica-git
 
 Conversion between git repositories and [Historica](https://github.com/diaryx-org/historica)
 stores.
@@ -15,7 +15,7 @@ and that is all this is.
 One direction works: a git repository converts into a Historica store.
 
 ```console
-$ historigit import ~/Code/some-repo ~/Code/some-repo-as-historica
+$ historica-git import ~/Code/some-repo ~/Code/some-repo-as-historica
 read 6 commits, recorded 5 revisions in /Users/adam/Code/some-repo-as-historica/history
 
 what did not cross:
@@ -31,7 +31,7 @@ Neither is anything that names a bookmark at a converted revision.
 Three decisions everything is written under.
 
 [Decision 0002](docs/decisions/0002-the-bridge-is-a-stream.md) makes the
-fast-import stream the whole of historigit's contact with git: no git library
+fast-import stream the whole of historica-git's contact with git: no git library
 is linked and no git object is written by this crate. Git itself is the
 dependency, and must be on `PATH`.
 
@@ -42,8 +42,9 @@ converting a repository twice produces one history rather than two.
 [Decision 0001](docs/decisions/0001-what-crosses-the-boundary.md) fixes the
 boundary with historica:
 
-- historigit depends on historica's **published** API and nothing else. A fact
-  the API does not expose is a change to historica, not a hole opened here.
+- historica-git depends on historica's **published** API and nothing else. A
+  fact the API does not expose is a change to historica, not a hole opened
+  here.
 - The store is written by historica and by nothing else. A conversion that
   hand-writes a revision document would be a second implementation of the
   format, and the format has one.
@@ -77,8 +78,8 @@ beside it:
 
 ```console
 git clone git@github.com:diaryx-org/historica.git
-git clone git@github.com:diaryx-org/historigit.git
-cd historigit && cargo build
+git clone git@github.com:diaryx-org/historica-git.git
+cd historica-git && cargo build
 ```
 
 ## Development

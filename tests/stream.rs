@@ -13,7 +13,7 @@ use std::fs;
 use std::io::Cursor;
 use std::path::PathBuf;
 
-use historigit::stream::{Change, Command, Content, DataRef, Mark, Mode, Reader};
+use historica_git::stream::{Change, Command, Content, DataRef, Mark, Mode, Reader};
 
 fn corpus() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/corpus/export")

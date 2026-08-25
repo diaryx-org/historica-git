@@ -1,6 +1,6 @@
 # Changelog
 
-What has changed in historigit, release by release, for someone deciding
+What has changed in historica-git, release by release, for someone deciding
 whether to move to a newer one.
 
 Two halves, written two different ways.
@@ -21,7 +21,7 @@ upgrades without editing a line of their own code observe a difference" is a
 judgment about the change that no subject can carry. Write one trailer per
 observable difference, as prose someone can act on.
 
-historigit has not been released, and cannot be until historica is: decision
+historica-git has not been released, and cannot be until historica is: decision
 0001 explains why the dependency is spelled with both a version and a path.
 
 ## Unreleased
@@ -30,14 +30,14 @@ historigit has not been released, and cannot be until historica is: decision
 
 ### Added
 
-- the repository, its CI, and the boundary a conversion works under ([`b35d2af`](https://github.com/diaryx-org/historigit/commit/b35d2af90e4486a9053b8010c36b597425f20219))
-- **stream** — read what git fast-export writes ([`5261ef1`](https://github.com/diaryx-org/historigit/commit/5261ef12da01564e0c3bd0a220169f87e863d660))
-- **tree** — replay a stream into the tree at each commit ([`a3f8dd0`](https://github.com/diaryx-org/historigit/commit/a3f8dd05d1859fe77933a3c66c6e1d174f0e86c1))
-- **identity** — derive a change from the commit's object ID ([`0be7985`](https://github.com/diaryx-org/historigit/commit/0be798563d1f7eb762249b683cba90f81e3bdf56))
-- **import** — convert a git repository into a store ([`5ce6710`](https://github.com/diaryx-org/historigit/commit/5ce671063b245957c2badb327bb0964da4d79dbc))
+- the repository, its CI, and the boundary a conversion works under ([`b35d2af`](https://github.com/diaryx-org/historica-git/commit/b35d2af90e4486a9053b8010c36b597425f20219))
+- **stream** — read what git fast-export writes ([`5261ef1`](https://github.com/diaryx-org/historica-git/commit/5261ef12da01564e0c3bd0a220169f87e863d660))
+- **tree** — replay a stream into the tree at each commit ([`a3f8dd0`](https://github.com/diaryx-org/historica-git/commit/a3f8dd05d1859fe77933a3c66c6e1d174f0e86c1))
+- **identity** — derive a change from the commit's object ID ([`0be7985`](https://github.com/diaryx-org/historica-git/commit/0be798563d1f7eb762249b683cba90f81e3bdf56))
+- **import** — convert a git repository into a store ([`5ce6710`](https://github.com/diaryx-org/historica-git/commit/5ce671063b245957c2badb327bb0964da4d79dbc))
 
 ### Fixed
 
-- **stream** — read the object ID a tag carries ([`ff8e64c`](https://github.com/diaryx-org/historigit/commit/ff8e64caa69107692bad6f57d496b53a2b20b961))
+- **stream** — read the object ID a tag carries ([`ff8e64c`](https://github.com/diaryx-org/historica-git/commit/ff8e64caa69107692bad6f57d496b53a2b20b961))
 
 <!-- git-cliff:end -->
