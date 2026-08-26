@@ -28,6 +28,10 @@ historica-git has not been released, and cannot be until historica is: decision
 
 <!-- git-cliff:begin — generated; edits here are overwritten -->
 
+### Breaking
+
+- **carried** — carry the committer and the signature across as headers ([`5090b85`](https://github.com/diaryx-org/historica-git/commit/5090b8510e3df210f3fc536015f3aacb643445cb))
+
 ### Added
 
 - the repository, its CI, and the boundary a conversion works under ([`b35d2af`](https://github.com/diaryx-org/historica-git/commit/b35d2af90e4486a9053b8010c36b597425f20219))
@@ -41,5 +45,24 @@ historica-git has not been released, and cannot be until historica is: decision
 
 - **stream** — read the object ID a tag carries ([`ff8e64c`](https://github.com/diaryx-org/historica-git/commit/ff8e64caa69107692bad6f57d496b53a2b20b961))
 - **import** — state no kind, which is what git has to say about one ([`28eb29d`](https://github.com/diaryx-org/historica-git/commit/28eb29d61e4c27baf20704eb89fa94392d27c6b0))
+
+### Behavioural changes
+
+- A revision imported from git now carries `git.committer` and
+  `git.signature` headers where the commit had them, and those headers are in
+  the canonical bytes. So the same repository imported by this version and by
+  the last one produces different revision IDs, and two such stores will not
+  fold together — `receive` will union them as unrelated history. Re-import
+  rather than mix them.
+
+- `import` asks git for `--signed-commits=verbatim` rather
+  than `--signed-commits=warn-strip`. A signed commit's signature now reaches
+  the store instead of a warning reaching stderr, and the report no longer says
+  that signatures were stripped, because they no longer are.
+
+- `stream::Commit` gained a `signature` field and
+  `stream::Signature` is new, so code constructing a `Commit` literal no longer
+  compiles until it states one. `None` is what a stream carrying no signature
+  reads as.
 
 <!-- git-cliff:end -->
