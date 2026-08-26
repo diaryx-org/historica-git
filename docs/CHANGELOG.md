@@ -39,5 +39,6 @@ historica-git has not been released, and cannot be until historica is: decision
 ### Fixed
 
 - **stream** — read the object ID a tag carries ([`ff8e64c`](https://github.com/diaryx-org/historica-git/commit/ff8e64caa69107692bad6f57d496b53a2b20b961))
+- **import** — state no kind, which is what git has to say about one ([`28eb29d`](https://github.com/diaryx-org/historica-git/commit/28eb29d61e4c27baf20704eb89fa94392d27c6b0))
 
 <!-- git-cliff:end -->
