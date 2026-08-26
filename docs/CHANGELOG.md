@@ -31,6 +31,7 @@ historica-git has not been released, and cannot be until historica is: decision
 ### Breaking
 
 - **carried** — carry the committer and the signature across as headers ([`5090b85`](https://github.com/diaryx-org/historica-git/commit/5090b8510e3df210f3fc536015f3aacb643445cb))
+- **naming** — cross a ref that is only a pointer ([`f3f4f9a`](https://github.com/diaryx-org/historica-git/commit/f3f4f9aa37290676e02499fd564393b85b640b31))
 
 ### Added
 
@@ -64,5 +65,19 @@ historica-git has not been released, and cannot be until historica is: decision
   `stream::Signature` is new, so code constructing a `Commit` literal no longer
   compiles until it states one. `None` is what a stream carrying no signature
   reads as.
+
+- `import` now writes bookmarks. A ref under `refs/heads/`
+  becomes a bookmark on the change and one under `refs/tags/` a bookmark on the
+  revision, where before neither crossed and both were reported as uncarried.
+  A store converted by this version therefore holds names a store converted by
+  the last one did not, and `import::Report` gained a `bookmarks` field listing
+  them.
+
+- `write` now writes `refs/heads/` and `refs/tags/` from
+  bookmarks, sets HEAD, and checks the branch out. It used to leave every head
+  under `refs/historica/heads/` and leave HEAD wherever `git init` put it, so a
+  written repository reported every file as deleted. `export::Report` gained a
+  `branch` field naming the branch checked out, which is `None` when no bookmark
+  named one.
 
 <!-- git-cliff:end -->
