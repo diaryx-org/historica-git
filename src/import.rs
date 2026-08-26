@@ -217,6 +217,13 @@ impl Conversion {
             at: Vec::new(),
             accepted: Default::default(),
             only: Restriction::Everything,
+            // Nothing stated, so every added file is sniffed. Git has no
+            // better answer to hand over: a blob carries a mode and bytes and
+            // no notion of text, and git's own tools sniff exactly as
+            // historica's do. `.gitattributes` is the one place a repository
+            // ever says otherwise, and reading it is a feature this importer
+            // does not have rather than a fact it is discarding here.
+            kinds: Default::default(),
         };
 
         match record::record(store, &working, &recording, &mut identity) {
