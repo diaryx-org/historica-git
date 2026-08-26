@@ -19,9 +19,11 @@
 
 mod quote;
 mod read;
+mod write;
 
 pub use quote::quote;
 pub use read::{Error, Reader};
+pub use write::Writer;
 
 /// A mark: the stream's own name for an object it has just described, so that
 /// later commands can refer to it before git has assigned it an object ID.

@@ -13,7 +13,7 @@ use std::fs;
 use std::io::Cursor;
 use std::path::PathBuf;
 
-use historica_git::stream::{Change, Command, Content, DataRef, Mark, Mode, Reader};
+use historica_git::stream::{Change, Command, Content, DataRef, Mark, Mode, Reader, Writer};
 
 fn corpus() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/corpus/export")
@@ -225,4 +225,40 @@ fn a_stream_is_read_one_command_at_a_time() {
     assert!(matches!(first, Some(Command::Blob(_))));
     let rest = reader.count();
     assert_eq!(rest + 1, read_all(&bytes).len());
+}
+
+/// The writer, against the same stream: what git wrote reads and writes back
+/// unchanged.
+///
+/// This is the whole specification for [`Writer`]. Decision 0004 makes a commit
+/// a function of the revision, and the way that claim is ever checked is by
+/// comparing a stream this crate wrote with one git wrote — which is worth
+/// nothing if the two differ in a quoting rule or a trailing newline. So the
+/// corpus is read into commands and written back, and the bytes are the test.
+#[test]
+fn a_stream_git_wrote_is_written_back_byte_for_byte() {
+    let bytes = fs::read(corpus().join("all.fi")).expect("the corpus is checked in");
+    let commands = read_all(&bytes);
+
+    let mut writer = Writer::new(Vec::new());
+    for command in &commands {
+        writer.write(command).expect("a vector takes bytes");
+    }
+    let written = writer.into_inner();
+
+    if written != bytes {
+        let at = written
+            .iter()
+            .zip(&bytes)
+            .position(|(a, b)| a != b)
+            .unwrap_or(written.len().min(bytes.len()));
+        let from = at.saturating_sub(60);
+        panic!(
+            "the stream differs from git\'s at byte {at}\n\
+             wrote:  {:?}\n\
+             git had: {:?}",
+            String::from_utf8_lossy(&written[from..(at + 60).min(written.len())]),
+            String::from_utf8_lossy(&bytes[from..(at + 60).min(bytes.len())]),
+        );
+    }
 }

@@ -12,7 +12,8 @@ and that is all this is.
 
 ## Status
 
-One direction works: a git repository converts into a Historica store.
+Both directions work. A git repository converts into a Historica store, and a
+store is written out as a git repository.
 
 ```console
 $ historica-git import ~/Code/some-repo ~/Code/some-repo-as-historica
@@ -23,10 +24,40 @@ what did not cross:
     person and the author is the one it keeps
   - one annotated tag did not cross; historica has bookmarks, and nothing yet
     points one at a converted revision
+
+$ historica-git write ~/Code/some-repo-as-historica ~/Code/some-repo-again
+read 5 revisions, wrote 5 commits in /Users/adam/Code/some-repo-again
+
+refs:
+  - refs/historica/heads/942830614775
+
+what did not cross:
+  - change IDs did not cross; git has nowhere to put one, and decision 0003
+    derives one from a commit rather than the other way about
 ```
 
-The other direction — a store written out as a git repository — is not built.
-Neither is anything that names a bookmark at a converted revision.
+`write` rather than `export`, because historica's decision 0042 already gives
+`export` to a copy of a store to take away.
+
+A commit is a function of the revision it came from — [decision
+0004](docs/decisions/0004-a-commit-is-a-function-of-the-revision.md) — so
+converting one store twice, or on two machines, writes the same commits, and
+the commit-to-revision correspondence is computed rather than filed. That makes
+the round trip checkable with a command you already have:
+
+```console
+$ historica-git import repo store && historica-git write store repo-again
+$ diff <(git -C repo rev-list --all) <(git -C repo-again rev-list --all)
+```
+
+It is the identity for a repository historica can hold entirely: one author per
+commit, no signature, no submodule. Where it is not, the commits that differ are
+exactly the facts `import` already reported as uncarried — the same gap read
+from the other end, and the specification for whatever closes it.
+
+What is not built is anything that keeps the two in step: no remembered
+correspondence, no bookmark named at a converted revision, and no refs crossing
+on the way in.
 
 Three decisions everything is written under.
 

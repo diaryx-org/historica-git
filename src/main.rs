@@ -3,7 +3,7 @@
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use historica_git::import;
+use historica_git::{export, import};
 
 fn main() -> ExitCode {
     let arguments: Vec<String> = std::env::args().skip(1).collect();
@@ -30,6 +30,10 @@ fn run(arguments: &[&str]) -> Result<(), String> {
         ["import", ..] => Err(format!(
             "`import` takes a repository and a folder to make\n\n{USAGE}"
         )),
+        ["write", folder, repository] => write(folder, repository),
+        ["write", ..] => Err(format!(
+            "`write` takes a store and a repository to make\n\n{USAGE}"
+        )),
         [command, ..] => Err(format!("unknown command `{command}`\n\n{USAGE}")),
     }
 }
@@ -46,28 +50,57 @@ fn convert(repository: &str, folder: &str) -> Result<(), String> {
         report.revisions,
         folder.join("history").display()
     );
-    // Decision 0001: a conversion states what it could not carry, because the
-    // person holding the result otherwise believes it is the thing it came
-    // from.
-    if !report.uncarried.is_empty() {
-        println!("\nwhat did not cross:");
-        for line in &report.uncarried {
-            println!("  - {line}");
-        }
-    }
+    say(&report.uncarried);
     Ok(())
 }
 
+/// Decision 0004: `write`, not `export`. Historica's decision 0042 gives
+/// `export` to a copy of a store to take away, and one binary cannot use the
+/// word for two things without the collision landing in the reader's head.
+fn write(folder: &str, repository: &str) -> Result<(), String> {
+    let folder = PathBuf::from(folder);
+    let repository = PathBuf::from(repository);
+    let report = export::to_repository(&folder, &repository).map_err(|error| error.to_string())?;
+
+    println!(
+        "read {} revisions, wrote {} commits in {}",
+        report.revisions,
+        report.commits,
+        repository.display()
+    );
+    if !report.references.is_empty() {
+        println!("\nrefs:");
+        for reference in &report.references {
+            println!("  - {reference}");
+        }
+    }
+    say(&report.uncarried);
+    Ok(())
+}
+
+/// Decision 0001: a conversion states what it could not carry, because the
+/// person holding the result otherwise believes it is the thing it came from.
+fn say(uncarried: &[String]) {
+    if uncarried.is_empty() {
+        return;
+    }
+    println!("\nwhat did not cross:");
+    for line in uncarried {
+        println!("  - {line}");
+    }
+}
+
 const USAGE: &str = "\
-historica-git converts a git repository into a Historica store.
+historica-git converts between git repositories and Historica stores.
 
 usage: historica-git <command>
 
 commands:
 
   import <repository> <folder>   convert <repository> into a new store at <folder>
+  write  <folder> <repository>   write the store at <folder> out as a git repository
 
-The folder must be empty or absent: a conversion only writes where it can be
+Each target must be empty or absent: a conversion only writes where it can be
 sure it owns everything it removes. `git` must be on PATH, which decision 0002
 makes this tool's one dependency.
 ";
