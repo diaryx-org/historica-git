@@ -41,6 +41,7 @@ historica-git has not been released, and cannot be until historica is: decision
 - **identity** — derive a change from the commit's object ID ([`0be7985`](https://github.com/diaryx-org/historica-git/commit/0be798563d1f7eb762249b683cba90f81e3bdf56))
 - **import** — convert a git repository into a store ([`5ce6710`](https://github.com/diaryx-org/historica-git/commit/5ce671063b245957c2badb327bb0964da4d79dbc))
 - **export** — write a store out as a git repository ([`784e768`](https://github.com/diaryx-org/historica-git/commit/784e7687815106f391b74f4bb54f7d517d5b9357))
+- **naming** — cross a branch whose name has structure in it ([`715361d`](https://github.com/diaryx-org/historica-git/commit/715361d8c82c3410cffb161ef36663834dcce880))
 
 ### Fixed
 
@@ -79,5 +80,16 @@ historica-git has not been released, and cannot be until historica is: decision
   written repository reported every file as deleted. `export::Report` gained a
   `branch` field naming the branch checked out, which is `None` when no bookmark
   named one.
+
+- A branch or tag whose name holds a `/` now crosses, where it
+  was reported as uncarried before. A store converted by this version therefore
+  holds bookmarks a store converted by the last one did not, and the names nest
+  as directories below `names/`. This needs historica 0071 or later; against an
+  earlier one the names are refused as they were.
+
+- `write` chooses `main` or `master` as the branch to check
+  out where either is a bookmark, rather than the first branch in name order.
+  A store whose bookmarks include both `main` and a name sorting above it now
+  checks out `main`.
 
 <!-- git-cliff:end -->
