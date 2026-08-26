@@ -40,6 +40,22 @@ Historica's decision 0070 built the field. This decides what goes in it.
   `"-----BEGIN PGP SIGNATURE-----` for the same reason base64 was not chosen:
   a person reading the file can see what it is.
 
+- **The spelling is a function of the bytes, not a choice about them.** A header
+  value is in the revision's canonical bytes, so two runs of a conversion that
+  spelled one signature two ways would write two revision IDs — and decision
+  0003's reproducibility would fail only when somebody re-imported, which is the
+  worst time to find out. So `spell` is pure, and a test sweeps every byte value
+  asserting that it round-trips, that it is spelled the same way twice, and that
+  what comes out is ASCII, which is what makes the final `from_utf8_lossy`
+  lossless rather than lucky.
+
+- **A name ending in a space loses it, as it would in git.** The separator
+  before the address is a space, so a trailing space in a name is one git's own
+  reader cannot tell from the separator; it trims, and git normalises such a
+  name away before a commit object holds one. Stated because it is the one input
+  the committer round trip does not survive, and an unstated exception is a
+  surprise.
+
 - **A signature does not survive an amendment.** Historica's 0023 carries a
   header across a rewrite because a writer that cannot read one must not drop
   it, and that is right for every header except this one. A signature is a claim

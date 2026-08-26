@@ -159,6 +159,120 @@ mod tests {
         assert_eq!(read(&spelled).as_deref(), Some(&armour[..]));
     }
 
+    /// Every byte, as a value: what `spell` writes is what `read` reads, it is
+    /// a header historica takes, and two runs agree about it.
+    ///
+    /// The last of those three is the one that is load-bearing somewhere else.
+    /// A header value is in the revision's canonical bytes, so the spelling has
+    /// to be a *function* of the signature rather than a choice about it: two
+    /// runs of `import` over one commit that spelled it two ways would write two
+    /// revision IDs, and the reproducibility decision 0003 exists for would fail
+    /// only when somebody re-imported, which is the worst time to find out.
+    ///
+    /// It is a pure function today and the point is to keep it one. In
+    /// particular `spell` ends in `String::from_utf8_lossy`, which is only
+    /// lossless because `quote` escapes every byte outside printable ASCII —
+    /// an invariant worth asserting rather than reasoning about once.
+    #[test]
+    fn every_byte_spells_and_reads_back_the_same_way_twice() {
+        let mut values: Vec<Vec<u8>> = Vec::new();
+        for byte in 0u8..=255 {
+            // Alone, at the front, at the back, and in the middle, so that the
+            // leading- and trailing-space fallback is reached by the byte that
+            // needs it rather than only by the case that was thought of.
+            values.push(vec![byte]);
+            values.push(vec![byte, b'a']);
+            values.push(vec![b'a', byte]);
+            values.push(vec![b'a', byte, b'b']);
+        }
+        values.push(Vec::new());
+        values.push(b"-----BEGIN PGP SIGNATURE-----\n\nabc/+=\n-----END-----".to_vec());
+        values.push(
+            "Ada \u{fffd} Lovelace <ada@example.com> 1 +0000"
+                .as_bytes()
+                .to_vec(),
+        );
+        values.push(vec![0xff, 0xfe, 0xfd]);
+
+        for value in values {
+            let spelled = spell(&value);
+            assert_eq!(
+                spelled,
+                spell(&value),
+                "two spellings of {value:?} disagreed"
+            );
+            assert!(
+                spelled.is_ascii(),
+                "{value:?} spelled as something `from_utf8_lossy` could damage: {spelled}"
+            );
+            assert_eq!(
+                read(&spelled).as_deref(),
+                Some(&value[..]),
+                "{value:?} did not read back from {spelled}"
+            );
+            historica::format::check_extension(SIGNATURE, &spelled).unwrap_or_else(|because| {
+                panic!("{value:?} spelled as `{spelled}`, which historica refused: {because:?}")
+            });
+        }
+    }
+
+    /// The same, for the one value that is parsed rather than only carried.
+    #[test]
+    fn a_committer_reads_back_however_it_was_written() {
+        let awkward = [
+            &b"Ada"[..],
+            b"",
+            b"  leading",
+            b"Quote\" Name",
+            b"Back\\slash",
+            b"Caf\xc3\xa9",
+            b"Name <with> angles",
+        ];
+        for name in awkward {
+            for offset_minutes in [0, -420, 330] {
+                let person = Person {
+                    name: name.to_vec(),
+                    email: b"ada@example.com".to_vec(),
+                    seconds: 1767348245,
+                    offset_minutes,
+                };
+                let spelled = spell_person(&person);
+                assert_eq!(spelled, spell_person(&person), "two spellings disagreed");
+                historica::format::check_extension(COMMITTER, &spelled)
+                    .unwrap_or_else(|because| panic!("`{spelled}` refused: {because:?}"));
+                assert_eq!(
+                    read_person(&spelled),
+                    Some(person),
+                    "did not read back from `{spelled}`"
+                );
+            }
+        }
+    }
+
+    /// A name ending in a space comes back without it, because `Name <email>`
+    /// cannot hold one.
+    ///
+    /// Not a loss this crate chose. The separator before the address is a
+    /// space, so a trailing space in a name is a space git's own reader cannot
+    /// tell from the separator — `stream::read`'s `person` trims for exactly
+    /// this reason, and git normalises such a name away before a commit object
+    /// ever holds one. Asserted rather than left to be discovered, so that the
+    /// one input `spell_person` does not round-trip is a stated rule instead of
+    /// a surprise.
+    #[test]
+    fn a_name_ending_in_a_space_loses_it_as_it_would_in_git() {
+        let padded = Person {
+            name: b"  padded  ".to_vec(),
+            email: b"ada@example.com".to_vec(),
+            seconds: 1767348245,
+            offset_minutes: 0,
+        };
+        let read = read_person(&spell_person(&padded)).expect("it still reads");
+        assert_eq!(read.name, b"  padded", "the trailing space is what goes");
+        assert_eq!(read.email, padded.email);
+        assert_eq!(read.seconds, padded.seconds);
+    }
+
     /// What historica will accept, checked here rather than discovered by a
     /// `record` that refuses halfway through a conversion.
     #[test]
