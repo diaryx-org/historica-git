@@ -256,9 +256,20 @@ mod tests {
     /// space, so a trailing space in a name is a space git's own reader cannot
     /// tell from the separator — `stream::read`'s `person` trims for exactly
     /// this reason, and git normalises such a name away before a commit object
-    /// ever holds one. Asserted rather than left to be discovered, so that the
-    /// one input `spell_person` does not round-trip is a stated rule instead of
-    /// a surprise.
+    /// ever holds one.
+    ///
+    /// Nor is it a loss at all, in the end: historica cannot hold that person
+    /// either. Its `split_header` refuses a value with leading or trailing
+    /// space outright, on decision 0002's rule that a value must survive a
+    /// round trip, so `author Adam ` is not a line this format would parse or
+    /// write. One end trims and the other refuses, by different mechanisms and
+    /// for different reasons, and the set of people neither can represent is
+    /// the same set. So the trim discards nothing that could have come from
+    /// either side.
+    ///
+    /// Asserted rather than left to be discovered, so that the one input
+    /// `spell_person` does not round-trip is a stated rule instead of a
+    /// surprise.
     #[test]
     fn a_name_ending_in_a_space_loses_it_as_it_would_in_git() {
         let padded = Person {

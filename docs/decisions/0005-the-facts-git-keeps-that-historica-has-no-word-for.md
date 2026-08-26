@@ -52,9 +52,12 @@ Historica's decision 0070 built the field. This decides what goes in it.
 - **A name ending in a space loses it, as it would in git.** The separator
   before the address is a space, so a trailing space in a name is one git's own
   reader cannot tell from the separator; it trims, and git normalises such a
-  name away before a commit object holds one. Stated because it is the one input
-  the committer round trip does not survive, and an unstated exception is a
-  surprise.
+  name away before a commit object holds one. It is not a fact dropped between
+  the two, either: historica's `split_header` refuses a padded value outright on
+  its decision 0002's rule that a value must survive a round trip, so neither
+  end can represent such a person and the trim discards nothing the other side
+  could have held. Stated because it is the one input the committer round trip
+  does not survive, and an unstated exception is a surprise.
 
 - **A signature does not survive an amendment.** Historica's 0023 carries a
   header across a rewrite because a writer that cannot read one must not drop
