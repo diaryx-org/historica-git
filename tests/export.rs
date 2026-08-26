@@ -166,6 +166,55 @@ fn a_repository_historica_can_hold_converts_back_to_itself() {
         before,
         "a commit is supposed to be a function of the revision it came from"
     );
+    // Decision 0006: a branch and a lightweight tag are pointers, so both cross
+    // and both come back where they were.
+    assert_eq!(
+        references(&back),
+        references(&origin),
+        "the refs did not come back as they went"
+    );
+    // And the repository is one a person can use rather than one they have to
+    // repair: HEAD names a branch, and the files are in the folder.
+    assert_eq!(
+        head(&back),
+        "refs/heads/main",
+        "HEAD should name the branch that was checked out"
+    );
+    assert_eq!(worktree(&back), "", "the working tree should be clean");
+}
+
+/// Every ref and what it points at, so two repositories can be compared.
+fn references(at: &Path) -> Vec<String> {
+    let out = std::process::Command::new("git")
+        .arg("-C")
+        .arg(at)
+        .args(["for-each-ref", "--format=%(refname) %(objectname)"])
+        .output()
+        .expect("git runs");
+    String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .map(str::to_owned)
+        .collect()
+}
+
+fn head(at: &Path) -> String {
+    let out = std::process::Command::new("git")
+        .arg("-C")
+        .arg(at)
+        .args(["symbolic-ref", "HEAD"])
+        .output()
+        .expect("git runs");
+    String::from_utf8_lossy(&out.stdout).trim().to_owned()
+}
+
+fn worktree(at: &Path) -> String {
+    let out = std::process::Command::new("git")
+        .arg("-C")
+        .arg(at)
+        .args(["status", "--porcelain"])
+        .output()
+        .expect("git runs");
+    String::from_utf8_lossy(&out.stdout).trim().to_owned()
 }
 
 /// A history holding one of everything historica has a place for.
@@ -191,11 +240,17 @@ fn build(at: &Path) {
     };
     let run = |args: &[&str]| as_committer(("Ada", "ada@example.com"), args);
 
-    run(&["init", "--quiet", "."]);
+    // Named rather than left to `init.defaultBranch`, which is the machine's
+    // and not this test's.
+    run(&["init", "--quiet", "--initial-branch=main", "."]);
     // Not the machine's, whatever the machine's says: a signed commit is a
     // fact historica has nowhere to put, and this test is about the set that
     // crosses whole.
     run(&["config", "commit.gpgsign", "false"]);
+    // And `tag.gpgsign`, which would otherwise turn `git tag v1` into a signed
+    // annotated tag rather than the lightweight pointer this wants. The corpus
+    // `make.sh` sets it for the same reason.
+    run(&["config", "tag.gpgsign", "false"]);
 
     fs::create_dir_all(at.join("sub")).expect("a subdirectory");
     fs::write(at.join("a.txt"), "one\n").expect("a file");
@@ -220,6 +275,11 @@ fn build(at: &Path) {
         ("Bo", "bo@example.com"),
         &["commit", "--quiet", "-a", "-m", "Applied from a patch"],
     );
+
+    // A lightweight tag, which is a pointer and crosses, on a commit that is
+    // not the branch's tip so that the two refs cannot be confused for each
+    // other on the way back.
+    run(&["tag", "v1", "HEAD~1"]);
 }
 
 #[cfg(unix)]

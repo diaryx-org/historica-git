@@ -19,18 +19,26 @@ store is written out as a git repository.
 $ historica-git import ~/Code/some-repo ~/Code/some-repo-as-historica
 read 6 commits, recorded 5 revisions in /Users/adam/Code/some-repo-as-historica/history
 
+bookmarks:
+  - main
+  - v1.2
+
 what did not cross:
   - 6 commits name a committer other than their author; historica records one
     person, so the author is the revision's and the committer is a
     `git.committer` header beside it
-  - one annotated tag did not cross; historica has bookmarks, and nothing yet
-    points one at a converted revision
+  - one annotated tag did not cross; it is an object with a tagger and a
+    message of its own, and historica has nowhere for either — a lightweight
+    tag, which is only a pointer, crosses as a bookmark
 
 $ historica-git write ~/Code/some-repo-as-historica ~/Code/some-repo-again
 read 5 revisions, wrote 5 commits in /Users/adam/Code/some-repo-again
 
 refs:
-  - refs/historica/heads/942830614775
+  - refs/heads/main
+  - refs/tags/v1.2
+
+checked out main
 
 what did not cross:
   - change IDs did not cross; git has nowhere to put one, and decision 0003
@@ -60,8 +68,18 @@ carries them across as headers this tool owns — `git.committer`,
 repository's own eighteen commits are all signed, all round-trip, and
 `git log --show-signature` calls them good in the copy that was written back.
 
-What still does not cross is a message encoding, a submodule, and an annotated
-tag. Each is reported rather than dropped quietly.
+Refs cross too, and the mapping was already written into both designs:
+[decision 0006](docs/decisions/0006-a-ref-that-is-only-a-pointer-crosses.md)
+makes a branch a bookmark on a *change*, which follows the work through every
+rewrite, and a tag a bookmark on a *revision*, which is pinned and cannot move.
+So `refs/heads/x` and `refs/tags/x` each go over and come back where they were,
+and the written repository has HEAD on a branch and its files in the folder
+rather than needing repair before it can be read.
+
+What still does not cross is a message encoding, a submodule, an annotated tag —
+an object with a tagger and a message rather than a pointer — and a branch whose
+name has a `/` in it, which historica will not hold as a bookmark. Each is
+reported rather than dropped quietly.
 
 What is not built is anything that keeps the two in step: no remembered
 correspondence, no bookmark named at a converted revision, and no refs crossing

@@ -44,6 +44,12 @@ const STAGING: &str = "refs/historica/staging";
 /// unreachable.
 const UNNAMED: &str = "refs/historica/heads";
 
+/// Where a bookmark on a change goes: a branch, which moves as the work does.
+const HEADS: &str = "refs/heads/";
+
+/// Where a bookmark on a revision goes: a tag, which is pinned and does not.
+const TAGS: &str = "refs/tags/";
+
 /// What a conversion did, and what it could not carry.
 ///
 /// The counterpart of [`crate::import::Report`], and decision 0001 asks the
@@ -57,6 +63,8 @@ pub struct Report {
     pub commits: usize,
     /// Refs the conversion moved.
     pub references: Vec<String>,
+    /// The branch the conversion would have a fresh repository check out.
+    pub branch: Option<String>,
     /// One line per kind of fact that did not cross, for a person to read.
     pub uncarried: Vec<String>,
 }
@@ -114,14 +122,70 @@ pub fn to_repository(folder: &Path, repository: &Path) -> Result<Report, Error> 
 
     let said = listening.join().unwrap_or_default();
     let status = child.wait().map_err(Error::Spawn)?;
-    let report = outcome?;
+    let mut report = outcome?;
     if !status.success() {
         return Err(Error::GitFailed {
             status: status.code(),
             said,
         });
     }
+    check_out(repository, &mut report)?;
     Ok(report)
+}
+
+/// Point HEAD at a branch and put the files in the folder.
+///
+/// Nothing in the store says which branch was checked out — historica has no
+/// HEAD, because the folder *is* the tree and `update` is what moves it — so
+/// the conversion chooses the first branch a bookmark names and says which. A
+/// store with no branch in it leaves git's own default alone, and the
+/// repository is one where every ref is a tag or nothing.
+///
+/// Two commands rather than more stream. `fast-import` moves refs and cannot
+/// make HEAD a *symbolic* one, and it does not touch the index or the working
+/// tree at all — so a repository left as the import found it would show every
+/// file as deleted, which is an alarming way to hand somebody a conversion. Both
+/// are git writing to its own repository, which is decision 0002's arrangement
+/// rather than an exception to it: still no git object written here.
+fn check_out(repository: &Path, report: &mut Report) -> Result<(), Error> {
+    let Some(branch) = report.branch.clone() else {
+        report.note(
+            "nothing says which branch is checked out, because no bookmark named a \
+             branch; git's own default is what HEAD points at and it points at \
+             nothing"
+                .to_owned(),
+        );
+        return Ok(());
+    };
+
+    for arguments in [
+        vec![
+            "symbolic-ref".to_owned(),
+            "HEAD".to_owned(),
+            format!("{HEADS}{branch}"),
+        ],
+        vec![
+            "reset".to_owned(),
+            "--quiet".to_owned(),
+            "--hard".to_owned(),
+        ],
+    ] {
+        let status = Process::new("git")
+            .arg("-C")
+            .arg(repository)
+            .args(&arguments)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .map_err(Error::Spawn)?;
+        if !status.success() {
+            return Err(Error::GitFailed {
+                status: status.code(),
+                said: vec![format!("`git {}` failed", arguments.join(" "))],
+            });
+        }
+    }
+    Ok(())
 }
 
 /// The same conversion, written wherever the caller wants the bytes.
@@ -142,9 +206,13 @@ pub fn to_stream<W: Write>(folder: &Path, out: W) -> Result<Report, Error> {
         linked: 0,
         invalidated: 0,
         unreadable: BTreeSet::new(),
+        branch: None,
     };
     conversion.run(&store)?;
-    Ok(conversion.report)
+    let branch = conversion.branch.clone();
+    let mut report = conversion.report;
+    report.branch = branch;
+    Ok(report)
 }
 
 /// One conversion in progress.
@@ -163,6 +231,10 @@ struct Conversion<W> {
     linked: usize,
     invalidated: usize,
     unreadable: BTreeSet<String>,
+    /// The branch a fresh repository should have checked out, which is the
+    /// first one a bookmark names. Nothing in the store says which — see
+    /// [`to_repository`].
+    branch: Option<String>,
 }
 
 impl<W: Write> Conversion<W> {
@@ -438,18 +510,21 @@ impl<W: Write> Conversion<W> {
                 self.private += 1;
                 continue;
             }
-            let Some(target) = resolve(history, &bookmark.target) else {
+            let Some((target, directory)) = resolve(history, &bookmark.target) else {
                 continue;
             };
             let Some(mark) = self.marks.get(&target).copied() else {
                 continue;
             };
-            let Some(reference) = git_ref(name) else {
+            let Some(reference) = git_ref(directory, name) else {
                 self.report.note(format!(
                     "the bookmark `{name}` did not cross; git has no ref by that name"
                 ));
                 continue;
             };
+            if directory == HEADS && self.branch.is_none() {
+                self.branch = Some(name.clone());
+            }
             self.write(&Command::Reset(Reset {
                 reference: reference.clone().into_bytes(),
                 from: Some(DataRef::Mark(mark)),
@@ -571,17 +646,25 @@ impl<W: Write> Conversion<W> {
     }
 }
 
-/// The revision a bookmark points at, now.
+/// The revision a bookmark points at, and the ref it becomes.
+///
+/// Decision 0006: historica's two kinds of target are the distinction git
+/// spells with two directories, which is what lets a branch and a tag both
+/// cross without this inventing a grammar for either.
 fn resolve(
     history: &historica::core::History,
     name: &historica::store::Name,
-) -> Option<RevisionId> {
+) -> Option<(RevisionId, &'static str)> {
     match name {
-        historica::store::Name::Revision(revision) => Some(*revision),
+        // A bookmark on a change follows the work through every rewrite, which
+        // is what a branch does.
         historica::store::Name::Change(change) => match history.change_state(change) {
-            ChangeState::Resolved(revision) => Some(revision.id),
+            ChangeState::Resolved(revision) => Some((revision.id, HEADS)),
             _ => None,
         },
+        // A bookmark on a revision is pinned and cannot move, which is what a
+        // tag is.
+        historica::store::Name::Revision(revision) => Some((*revision, TAGS)),
         // A bookmark on a file is not a place in the history, so there is no
         // ref it could become.
         historica::store::Name::File(_) => None,
@@ -668,7 +751,7 @@ fn person(
 }
 
 /// A bookmark's name as a git ref, or nothing where git would refuse it.
-fn git_ref(name: &str) -> Option<String> {
+fn git_ref(directory: &str, name: &str) -> Option<String> {
     let refused = name.is_empty()
         || name.starts_with('-')
         || name.starts_with('.')
@@ -683,7 +766,7 @@ fn git_ref(name: &str) -> Option<String> {
             .any(|c| c.is_control() || matches!(c, ' ' | '~' | '^' | ':' | '?' | '*' | '[' | '\\'));
     match refused {
         true => None,
-        false => Some(format!("refs/heads/{name}")),
+        false => Some(format!("{directory}{name}")),
     }
 }
 

@@ -65,14 +65,32 @@ fn the_corpus_converts_into_a_store_that_checks() {
         "the empty commit has no revision; what stood on it stands on its parent"
     );
 
-    // Decision 0001: what could not cross is stated rather than dropped.
+    // Decision 0006: a branch and a lightweight tag are both only pointers, so
+    // both cross as bookmarks. `side` is a branch the fixture leaves behind a
+    // merge, and it is named even though nothing stands on it.
+    assert_eq!(
+        report.bookmarks,
+        // In the order the refs sort, which is the whole ref name: the two
+        // under `refs/heads/` before the one under `refs/tags/`.
+        vec!["main".to_owned(), "side".to_owned(), "light".to_owned()],
+        "every ref that is only a pointer should have become a bookmark"
+    );
+
+    // Decision 0001: what could not cross is stated rather than dropped. The
+    // annotated tag is the one ref that does not, because it is an object with
+    // a tagger and a message rather than a pointer.
     let said = report.uncarried.join("\n");
-    for expected in ["committer", "tags", "refs", "changed nothing"] {
+    for expected in ["committer", "annotated tag", "changed nothing"] {
         assert!(
             said.contains(expected),
             "the report should say what happened to {expected}:\n{said}"
         );
     }
+    assert!(
+        !report.bookmarks.contains(&"annotated".to_owned()),
+        "an annotated tag should not become a bookmark: {:?}",
+        report.bookmarks
+    );
 
     // The store historica itself is willing to stand behind.
     let checked = Store::check(into.join(STORE_DIR));

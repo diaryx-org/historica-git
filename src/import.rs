@@ -12,7 +12,7 @@
 //! or absent, and the only paths this removes are ones it wrote itself on a
 //! previous commit.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
@@ -22,7 +22,7 @@ use std::rc::Rc;
 use historica::core::RevisionId;
 use historica::format::Timestamp;
 use historica::record::{self, Recording, Restriction};
-use historica::store::{STORE_DIR, Store};
+use historica::store::{Bookmark, Name, STORE_DIR, Store, StoreError};
 use historica::working::{Skipped, Working};
 
 use crate::carried;
@@ -49,6 +49,8 @@ pub struct Report {
     /// Commits that changed nothing and are not a merge, which historica has
     /// no revision for. Their descendants stand on their parent instead.
     pub empty: usize,
+    /// Bookmarks named at a converted revision.
+    pub bookmarks: Vec<String>,
     /// One line per kind of fact that did not cross, for a person to read.
     pub uncarried: Vec<String>,
 }
@@ -135,7 +137,10 @@ pub fn from_stream<R: BufRead>(input: R, folder: &Path) -> Result<Report, Error>
         signatures: 0,
         encodings: 0,
         tags: 0,
-        references: Vec::new(),
+        refs: BTreeMap::new(),
+        unnameable: Vec::new(),
+        elsewhere: BTreeSet::new(),
+        dangling: 0,
     };
 
     for command in Reader::new(input) {
@@ -145,16 +150,16 @@ pub fn from_stream<R: BufRead>(input: R, folder: &Path) -> Result<Report, Error>
             (Command::Commit(commit), Some(tree)) => {
                 conversion.commit(&mut store, commit, tree)?;
             }
+            // An annotated tag is an object with a tagger and a message of its
+            // own, and historica has nowhere for either. Its `from` is not
+            // followed into a bookmark, because a bookmark would say the tag
+            // crossed when what crossed is where it pointed.
             (Command::Tag(_), _) => conversion.tags += 1,
-            (Command::Reset(reset), _) => {
-                let name = String::from_utf8_lossy(&reset.reference).into_owned();
-                if !conversion.references.contains(&name) {
-                    conversion.references.push(name);
-                }
-            }
+            (Command::Reset(reset), _) => conversion.moved(reset),
             _ => {}
         }
     }
+    conversion.name(&mut store)?;
     Ok(conversion.finish())
 }
 
@@ -172,7 +177,13 @@ struct Conversion {
     signatures: usize,
     encodings: usize,
     tags: usize,
-    references: Vec<String>,
+    /// Where each ref of the stream ended up, played forward exactly as the
+    /// stream moves them: a `commit` moves the ref it names, and a `reset`
+    /// moves the ref it names to wherever it says.
+    refs: BTreeMap<String, RevisionId>,
+    unnameable: Vec<String>,
+    elsewhere: BTreeSet<String>,
+    dangling: usize,
 }
 
 impl Conversion {
@@ -238,9 +249,11 @@ impl Conversion {
             kinds: Default::default(),
         };
 
+        let reference = String::from_utf8_lossy(&commit.reference).into_owned();
         match record::record(store, &working, &recording, &mut identity) {
             Ok(recorded) => {
                 self.report.revisions += 1;
+                self.refs.insert(reference, recorded.revision);
                 if let Some(mark) = commit.mark {
                     self.revisions.insert(mark, recorded.revision);
                 }
@@ -251,11 +264,78 @@ impl Conversion {
             // the shape of the history is kept even though the commit is not.
             Err(record::RecordError::NothingToRecord) => {
                 self.report.empty += 1;
-                if let (Some(mark), Some(parent)) = (commit.mark, recording.parents.first()) {
-                    self.revisions.insert(mark, *parent);
+                if let Some(parent) = recording.parents.first() {
+                    self.refs.insert(reference, *parent);
+                    if let Some(mark) = commit.mark {
+                        self.revisions.insert(mark, *parent);
+                    }
                 }
             }
             Err(other) => return Err(Error::Record(Box::new(other))),
+        }
+        Ok(())
+    }
+
+    /// A `reset`: a ref moved with no commit of its own.
+    ///
+    /// Lightweight tags and branch creation both arrive this way, and a reset
+    /// with no `from` only deletes, which leaves the ref where the stream has
+    /// nothing further to say about it.
+    fn moved(&mut self, reset: &crate::stream::Reset) {
+        let reference = String::from_utf8_lossy(&reset.reference).into_owned();
+        match &reset.from {
+            Some(DataRef::Mark(mark)) => match self.revisions.get(mark) {
+                Some(revision) => {
+                    self.refs.insert(reference, *revision);
+                }
+                None => self.dangling += 1,
+            },
+            // An object ID rather than a mark: content this stream did not
+            // carry, so there is no revision here to point at.
+            Some(DataRef::Oid(_)) => self.dangling += 1,
+            None => {
+                self.refs.remove(&reference);
+            }
+        }
+    }
+
+    /// Name a bookmark at each ref the stream left somewhere.
+    ///
+    /// Decision 0006: a branch follows the work, so it becomes a bookmark on
+    /// the change; a tag names one version and does not move, so it becomes a
+    /// bookmark on the revision. Historica's two kinds of target are the
+    /// distinction git spells with two directories, which is what lets both
+    /// cross without this inventing a grammar for either.
+    fn name(&mut self, store: &mut Store) -> Result<(), Error> {
+        for (reference, revision) in std::mem::take(&mut self.refs) {
+            let target = if let Some(branch) = reference.strip_prefix("refs/heads/") {
+                let Some(change) = store.revision(&revision).map(|revision| revision.change) else {
+                    self.dangling += 1;
+                    continue;
+                };
+                (branch.to_owned(), Name::Change(change))
+            } else if let Some(tag) = reference.strip_prefix("refs/tags/") {
+                (tag.to_owned(), Name::Revision(revision))
+            } else {
+                // `refs/remotes/`, `refs/notes/`, and whatever else a
+                // repository keeps. Each is a fact about somewhere else, and a
+                // bookmark that claimed otherwise would be this tool deciding
+                // what somebody's remote-tracking ref meant.
+                self.elsewhere.insert(elsewhere(&reference));
+                continue;
+            };
+
+            let (name, target) = target;
+            match store.set_bookmark(&name, Bookmark::shared(target)) {
+                Ok(()) => self.report.bookmarks.push(name),
+                // Historica decides what a bookmark may be called and this
+                // reports what it decided, rather than keeping a second copy of
+                // the rule that would drift from it.
+                Err(StoreError::UnusableName { .. } | StoreError::NameIsAnIdentifier { .. }) => {
+                    self.unnameable.push(reference)
+                }
+                Err(other) => return Err(other.into()),
+            }
         }
         Ok(())
     }
@@ -340,21 +420,44 @@ impl Conversion {
         if self.tags > 0 {
             let tags = self.tags;
             self.report.note(if tags == 1 {
-                "one annotated tag did not cross; historica has bookmarks, and \
-                 nothing yet points one at a converted revision"
+                "one annotated tag did not cross; it is an object with a tagger \
+                 and a message of its own, and historica has nowhere for either — \
+                 a lightweight tag, which is only a pointer, crosses as a bookmark"
                     .to_owned()
             } else {
                 format!(
-                    "{tags} annotated tags did not cross; historica has bookmarks, \
-                     and nothing yet points one at a converted revision"
+                    "{tags} annotated tags did not cross; each is an object with a \
+                     tagger and a message of its own, and historica has nowhere for \
+                     either — a lightweight tag, which is only a pointer, crosses \
+                     as a bookmark"
                 )
             });
         }
-        if !self.references.is_empty() {
-            let references = self.references.join(", ");
+        if !self.unnameable.is_empty() {
+            let refused = self.unnameable.join(", ");
             self.report.note(format!(
-                "these refs did not cross: {references} — every commit they named \
-                 is in the store, but nothing names the ends of them"
+                "these refs did not cross: {refused} — historica will not hold a \
+                 bookmark by those names, and a name this tool spelled some other \
+                 way would be a name nobody could type"
+            ));
+        }
+        if !self.elsewhere.is_empty() {
+            let elsewhere = self
+                .elsewhere
+                .iter()
+                .cloned()
+                .collect::<Vec<_>>()
+                .join(", ");
+            self.report.note(format!(
+                "refs under {elsewhere} did not cross; each is a fact about \
+                 somewhere else, and every commit they named is in the store"
+            ));
+        }
+        if self.dangling > 0 {
+            let dangling = self.dangling;
+            self.report.note(format!(
+                "{dangling} refs named something this stream did not carry, and \
+                 nothing names them now"
             ));
         }
         if self.report.empty > 0 {
@@ -373,6 +476,15 @@ impl Conversion {
             });
         }
         self.report
+    }
+}
+
+/// The directory a ref that is neither a branch nor a tag sits in, so that a
+/// hundred remote-tracking refs are reported as `refs/remotes/` once.
+fn elsewhere(reference: &str) -> String {
+    match reference.rfind('/') {
+        Some(at) => reference[..=at].to_owned(),
+        None => reference.to_owned(),
     }
 }
 

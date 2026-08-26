@@ -50,6 +50,12 @@ fn convert(repository: &str, folder: &str) -> Result<(), String> {
         report.revisions,
         folder.join("history").display()
     );
+    if !report.bookmarks.is_empty() {
+        println!("\nbookmarks:");
+        for bookmark in &report.bookmarks {
+            println!("  - {bookmark}");
+        }
+    }
     say(&report.uncarried);
     Ok(())
 }
@@ -73,6 +79,9 @@ fn write(folder: &str, repository: &str) -> Result<(), String> {
         for reference in &report.references {
             println!("  - {reference}");
         }
+    }
+    if let Some(branch) = &report.branch {
+        println!("\nchecked out {branch}");
     }
     say(&report.uncarried);
     Ok(())
