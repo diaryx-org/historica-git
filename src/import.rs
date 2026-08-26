@@ -181,7 +181,7 @@ struct Conversion {
     /// stream moves them: a `commit` moves the ref it names, and a `reset`
     /// moves the ref it names to wherever it says.
     refs: BTreeMap<String, RevisionId>,
-    unnameable: Vec<String>,
+    unnameable: Vec<(String, String)>,
     elsewhere: BTreeSet<String>,
     dangling: usize,
 }
@@ -331,9 +331,19 @@ impl Conversion {
                 // Historica decides what a bookmark may be called and this
                 // reports what it decided, rather than keeping a second copy of
                 // the rule that would drift from it.
-                Err(StoreError::UnusableName { .. } | StoreError::NameIsAnIdentifier { .. }) => {
-                    self.unnameable.push(reference)
+                Err(StoreError::UnusableName { because, .. }) => {
+                    self.unnameable.push((reference, because))
                 }
+                // A branch called exactly what a change ID looks like. Rare to
+                // the point of contrivance, and still a ref rather than a
+                // conversion that should stop: decision 0024 refuses the name
+                // because it would shadow the identifier it is spelled like.
+                Err(StoreError::NameIsAnIdentifier { .. }) => self.unnameable.push((
+                    reference,
+                    "it is spelled as an identifier, and a bookmark that is one \
+                     would stop that identifier naming its own file"
+                        .to_owned(),
+                )),
                 Err(other) => return Err(other.into()),
             }
         }
@@ -433,12 +443,13 @@ impl Conversion {
                 )
             });
         }
-        if !self.unnameable.is_empty() {
-            let refused = self.unnameable.join(", ");
+        // Historica says which rule the name broke, and this repeats what it
+        // said rather than paraphrasing it: a second copy of the rule here
+        // would drift from the one that is actually enforced.
+        for (reference, because) in std::mem::take(&mut self.unnameable) {
             self.report.note(format!(
-                "these refs did not cross: {refused} — historica will not hold a \
-                 bookmark by those names, and a name this tool spelled some other \
-                 way would be a name nobody could type"
+                "`{reference}` did not cross: {because} — and a name this tool \
+                 spelled some other way would be a name nobody could type"
             ));
         }
         if !self.elsewhere.is_empty() {

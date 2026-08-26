@@ -178,7 +178,7 @@ fn a_repository_historica_can_hold_converts_back_to_itself() {
     assert_eq!(
         head(&back),
         "refs/heads/main",
-        "HEAD should name the branch that was checked out"
+        "`main` should win over a branch that merely sorts before it"
     );
     assert_eq!(worktree(&back), "", "the working tree should be clean");
 }
@@ -280,6 +280,12 @@ fn build(at: &Path) {
     // not the branch's tip so that the two refs cannot be confused for each
     // other on the way back.
     run(&["tag", "v1", "HEAD~1"]);
+
+    // A branch whose name has structure in it, which historica holds as a path
+    // below `names/`. It sorts above `main`, which is what makes it worth
+    // having here: the branch a conversion checks out is chosen rather than
+    // taken in order, and this is the case that tells the two apart.
+    run(&["branch", "claude/scratch"]);
 }
 
 #[cfg(unix)]

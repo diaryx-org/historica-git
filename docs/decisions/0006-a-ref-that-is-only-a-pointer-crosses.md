@@ -34,16 +34,20 @@ to be written into both designs already.
   them are one line.
 
 - **Historica decides what a bookmark may be called, and this reports what it
-  decided.** A name is refused rather than rewritten — notably a branch with a
-  `/` in it, which `set_bookmark` will not hold — because a name spelled some
-  other way is a name nobody can type. The rule is not copied here, where it
-  would drift; the refusal is caught and named.
+  decided.** A name is refused rather than rewritten, because a name spelled
+  some other way is a name nobody can type. The rule is not copied here, where
+  it would drift; the refusal is caught and the sentence historica gave for it
+  is repeated verbatim.
 
 - **The conversion chooses which branch is checked out, and says which.**
   Nothing in the store says: historica has no HEAD, because the folder *is* the
-  tree and `update` is what moves it. So a fresh repository gets the first branch
-  a bookmark names, and a store with no branch in it is left with git's own
-  default and a line saying HEAD points at nothing.
+  tree and `update` is what moves it. So a fresh repository gets `main`, or
+  `master`, or failing both the first branch in name order — and a store with no
+  branch in it is left with git's own default and a line saying HEAD points at
+  nothing. Name order alone would not do, and the reason arrived with nested
+  names: `claude/something` sorts above `main`, and a conversion that checked out
+  somebody's scratch branch would be arbitrary in a way a person would read as
+  broken.
 
 ## Why the working tree is populated
 
@@ -72,9 +76,24 @@ anybody's for `--hard` to reach.
   time, so a ref deleted at the origin is not deleted here; it is simply absent
   from a conversion run again into an empty target.
 
-## Deferred
+## What is left of the refusal
 
-- **A branch whose name historica will not hold**, above.
+Historica's name grammar got wider in one direction and narrower in several:
+`/` is allowed, and an empty component, `.`, `..`, padding, a control character
+and a non-NFC name are all refused where they were not before. Git refuses most
+of those in a ref name too, so the sets very nearly agree.
+
+The one that does not is **NFC**. Git does not normalise; historica requires it.
+Whether that refusal is ever reached depends on where the conversion runs — git
+on macOS precomposes a ref name before storing one, so a decomposed branch
+created there arrives already normalised, and elsewhere it does not. The
+behaviour is the same either way and is the point: the ref does not become a
+bookmark, the conversion finishes, every commit is still in the store, and the
+report says which rule the name broke in historica's own words. There is a test
+for it built from a stream rather than a repository, because a repository cannot
+reach the case on the machine this was written on.
+
+## Deferred
 - **An annotated tag**, which needs somewhere for a tagger and a message and is
   therefore the same shape of question decision 0005 answered for a signature —
   but a bigger one, because a tag is an object rather than a header on one.

@@ -76,10 +76,13 @@ So `refs/heads/x` and `refs/tags/x` each go over and come back where they were,
 and the written repository has HEAD on a branch and its files in the folder
 rather than needing repair before it can be read.
 
-What still does not cross is a message encoding, a submodule, an annotated tag —
-an object with a tagger and a message rather than a pointer — and a branch whose
-name has a `/` in it, which historica will not hold as a bookmark. Each is
-reported rather than dropped quietly.
+A branch whose name has structure in it — `feat/presync-hook`, and every branch
+Claude Code creates — crosses as itself, since historica's decision 0071 makes a
+bookmark's name its path below `names/`.
+
+What still does not cross is a message encoding, a submodule, and an annotated
+tag, which is an object with a tagger and a message rather than a pointer. Each
+is reported rather than dropped quietly.
 
 What is not built is anything that keeps the two in step: no remembered
 correspondence, no bookmark named at a converted revision, and no refs crossing

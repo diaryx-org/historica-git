@@ -206,10 +206,10 @@ pub fn to_stream<W: Write>(folder: &Path, out: W) -> Result<Report, Error> {
         linked: 0,
         invalidated: 0,
         unreadable: BTreeSet::new(),
-        branch: None,
+        branches: Vec::new(),
     };
     conversion.run(&store)?;
-    let branch = conversion.branch.clone();
+    let branch = checked_out(&conversion.branches);
     let mut report = conversion.report;
     report.branch = branch;
     Ok(report)
@@ -231,10 +231,10 @@ struct Conversion<W> {
     linked: usize,
     invalidated: usize,
     unreadable: BTreeSet<String>,
-    /// The branch a fresh repository should have checked out, which is the
-    /// first one a bookmark names. Nothing in the store says which — see
+    /// Every branch a bookmark named, in the order they were written, so that
+    /// one of them can be checked out. Nothing in the store says which — see
     /// [`to_repository`].
-    branch: Option<String>,
+    branches: Vec<String>,
 }
 
 impl<W: Write> Conversion<W> {
@@ -522,8 +522,8 @@ impl<W: Write> Conversion<W> {
                 ));
                 continue;
             };
-            if directory == HEADS && self.branch.is_none() {
-                self.branch = Some(name.clone());
+            if directory == HEADS {
+                self.branches.push(name.clone());
             }
             self.write(&Command::Reset(Reset {
                 reference: reference.clone().into_bytes(),
@@ -644,6 +644,23 @@ impl<W: Write> Conversion<W> {
                 .to_owned(),
         );
     }
+}
+
+/// Which branch a fresh repository has checked out.
+///
+/// Nothing in the store says, so the conversion picks and says which. `main`
+/// and then `master` before anything else, because they are what a person means
+/// by "the branch" and taking the first in name order would not be: once a
+/// bookmark's name may hold a `/`, `claude/something` sorts above `main`, and a
+/// conversion that checked out somebody's scratch branch would be technically
+/// arbitrary and practically wrong.
+fn checked_out(branches: &[String]) -> Option<String> {
+    for usual in ["main", "master"] {
+        if let Some(found) = branches.iter().find(|branch| *branch == usual) {
+            return Some(found.clone());
+        }
+    }
+    branches.first().cloned()
 }
 
 /// The revision a bookmark points at, and the ref it becomes.

@@ -202,3 +202,54 @@ fn a_folder_holding_anything_is_refused() {
         "a refused conversion must not have removed anything"
     );
 }
+
+/// A ref whose name historica will not hold is reported, not dropped and not
+/// fatal.
+///
+/// Built as a stream rather than as a repository on purpose. Git on macOS
+/// precomposes a ref name before it stores one — `core.precomposeunicode` — so
+/// a branch created here with a decomposed `é` arrives already normalised and
+/// this path is never reached. On a machine where git does not precompose, it
+/// is: historica requires NFC and git does not normalise at all, which makes
+/// this the one refusal whose reachability depends on where the conversion runs.
+///
+/// What it must do is the same either way. The ref does not become a bookmark,
+/// the conversion finishes, every commit is still in the store, and the report
+/// says which rule the name broke in historica's own words.
+#[test]
+fn a_ref_historica_will_not_name_is_reported_rather_than_dropped() {
+    // `cafe` and a combining acute: NFC's decomposition, which is not NFC.
+    let decomposed = "caf\u{65}\u{301}";
+    let message = "Start\n";
+    let stream = format!(
+        "blob\n\
+         mark :1\n\
+         original-oid 5626abf0f72e74f6dc7e0eec4b95c6c7e0f5b7b8\n\
+         data 4\none\n\n\
+         commit refs/heads/{decomposed}\n\
+         mark :2\n\
+         original-oid 980aeeabdf5024a43392620b11f1d14de03a0bb5\n\
+         author Ada <ada@example.com> 1767348245 -0700\n\
+         committer Ada <ada@example.com> 1767348245 -0700\n\
+         data {}\n{message}\
+         M 100644 :1 a.txt\n\n",
+        message.len(),
+    )
+    .into_bytes();
+
+    let into = folder("unnameable-ref");
+    let report = import::from_stream(std::io::Cursor::new(stream), &into)
+        .expect("a ref historica cannot name does not stop a conversion");
+
+    assert_eq!(report.revisions, 1, "the commit itself still crossed");
+    assert!(
+        report.bookmarks.is_empty(),
+        "the ref should not have become a bookmark: {:?}",
+        report.bookmarks
+    );
+    let said = report.uncarried.join("\n");
+    assert!(
+        said.contains(decomposed) && said.contains("did not cross"),
+        "the report should name the ref and say it did not cross:\n{said}"
+    );
+}
