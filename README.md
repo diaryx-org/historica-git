@@ -21,7 +21,8 @@ read 6 commits, recorded 5 revisions in /Users/adam/Code/some-repo-as-historica/
 
 what did not cross:
   - 6 commits name a committer other than their author; historica records one
-    person and the author is the one it keeps
+    person, so the author is the revision's and the committer is a
+    `git.committer` header beside it
   - one annotated tag did not cross; historica has bookmarks, and nothing yet
     points one at a converted revision
 
@@ -50,10 +51,17 @@ $ historica-git import repo store && historica-git write store repo-again
 $ diff <(git -C repo rev-list --all) <(git -C repo-again rev-list --all)
 ```
 
-It is the identity for a repository historica can hold entirely: one author per
-commit, no signature, no submodule. Where it is not, the commits that differ are
-exactly the facts `import` already reported as uncarried — the same gap read
-from the other end, and the specification for whatever closes it.
+It is the identity for a repository historica can hold entirely, and that now
+includes a signed one. A committer distinct from the author and a signature are
+facts git keeps in the commit's own bytes and historica has no word for, so
+[decision 0005](docs/decisions/0005-the-facts-git-keeps-that-historica-has-no-word-for.md)
+carries them across as headers this tool owns — `git.committer`,
+`git.signature` — under the door historica's decision 0070 opened. This
+repository's own eighteen commits are all signed, all round-trip, and
+`git log --show-signature` calls them good in the copy that was written back.
+
+What still does not cross is a message encoding, a submodule, and an annotated
+tag. Each is reported rather than dropped quietly.
 
 What is not built is anything that keeps the two in step: no remembered
 correspondence, no bookmark named at a converted revision, and no refs crossing

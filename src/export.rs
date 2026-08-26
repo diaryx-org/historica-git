@@ -24,8 +24,9 @@ use historica::core::{ChangeState, RevisionId};
 use historica::store::{Content, STORE_DIR, Store};
 use historica::tree::{Kind, Tree, TreeContest};
 
+use crate::carried;
 use crate::stream::{Blob, Change, Command, Commit, Content as Carried, DataRef, Mark, Mode};
-use crate::stream::{Person, Reset, Writer};
+use crate::stream::{Person, Reset, Signature, Writer};
 
 mod error;
 
@@ -139,6 +140,8 @@ pub fn to_stream<W: Write>(folder: &Path, out: W) -> Result<Report, Error> {
         contested: BTreeSet::new(),
         private: 0,
         linked: 0,
+        invalidated: 0,
+        unreadable: BTreeSet::new(),
     };
     conversion.run(&store)?;
     Ok(conversion.report)
@@ -158,6 +161,8 @@ struct Conversion<W> {
     contested: BTreeSet<String>,
     private: usize,
     linked: usize,
+    invalidated: usize,
+    unreadable: BTreeSet<String>,
 }
 
 impl<W: Write> Conversion<W> {
@@ -180,18 +185,18 @@ impl<W: Write> Conversion<W> {
             let tree = self.tree(store, &id)?;
             let changes = self.files(store, &id, &tree)?;
             let author = person(&document.author, &document.when, &id)?;
+            let committer = self.committer(document, &author);
+            let signature = self.signature(document);
 
             let mark = self.mark();
             self.write(&Command::Commit(Commit {
                 reference: STAGING.as_bytes().to_vec(),
                 mark: Some(mark),
                 original_oid: None,
-                author: Some(author.clone()),
-                // Decision 0004: the author restated. A committer read from
-                // this machine's clock and configuration would make the object
-                // ID a fact about who ran the conversion.
-                committer: author,
+                author: Some(author),
+                committer,
                 encoding: None,
+                signature,
                 message: document.message.as_bytes().to_vec(),
                 from: parents.first().map(|mark| DataRef::Mark(*mark)),
                 merges: parents.iter().skip(1).map(|m| DataRef::Mark(*m)).collect(),
@@ -296,6 +301,57 @@ impl<W: Write> Conversion<W> {
             });
         }
         Ok(changes)
+    }
+
+    /// Who committed it.
+    ///
+    /// Decision 0004 restates the author, because a committer read from this
+    /// machine's clock and configuration would make the object ID a fact about
+    /// who ran the conversion. Where the commit named a different one, import
+    /// kept it under `git.committer` — historica's decision 0070 — and this is
+    /// where it comes back.
+    fn committer(
+        &mut self,
+        document: &historica::format::RevisionDocument,
+        author: &Person,
+    ) -> Person {
+        let Some(value) = document.extensions.get(carried::COMMITTER) else {
+            return author.clone();
+        };
+        match carried::read_person(value) {
+            Some(committer) => committer,
+            None => {
+                self.unreadable.insert(carried::COMMITTER.to_owned());
+                author.clone()
+            }
+        }
+    }
+
+    /// The signature, where the revision still has a right to one.
+    ///
+    /// A signature is a claim about exact bytes, so a revision that supersedes
+    /// another has no business carrying its predecessor's: historica's 0023
+    /// carries a header across an amendment because a writer that cannot read
+    /// one must not drop it, and 0070 says in as many words that a rewritten
+    /// commit's signature is not stale but wrong. Writing it would produce a
+    /// commit that says it was signed and was not.
+    fn signature(&mut self, document: &historica::format::RevisionDocument) -> Option<Signature> {
+        let value = document.extensions.get(carried::SIGNATURE)?;
+        if !document.supersedes.is_empty() {
+            self.invalidated += 1;
+            return None;
+        }
+        let (Some(data), Some(kind)) = (
+            carried::read(value),
+            document
+                .extensions
+                .get(carried::SIGNATURE_KIND)
+                .and_then(|kind| carried::read(kind)),
+        ) else {
+            self.unreadable.insert(carried::SIGNATURE.to_owned());
+            return None;
+        };
+        Some(Signature { kind, data })
     }
 
     fn mode(&self, entry: &historica::tree::Entry) -> Mode {
@@ -474,6 +530,30 @@ impl<W: Write> Conversion<W> {
                  at its file, and git's would be left dangling"
                     .to_owned(),
             );
+        }
+        if self.invalidated > 0 {
+            let invalidated = self.invalidated;
+            self.report.note(if invalidated == 1 {
+                "one revision carries a signature over a commit it is no longer \
+                 the same work as, because it was amended after it was imported; \
+                 the signature did not cross, since a commit that says it was \
+                 signed and was not is worse than one that says nothing"
+                    .to_owned()
+            } else {
+                format!(
+                    "{invalidated} revisions carry signatures over commits they are \
+                     no longer the same work as, because they were amended after \
+                     they were imported; the signatures did not cross, since a \
+                     commit that says it was signed and was not is worse than one \
+                     that says nothing"
+                )
+            });
+        }
+        for key in std::mem::take(&mut self.unreadable) {
+            self.report.note(format!(
+                "a `{key}` header did not cross; something wrote one under a key \
+                 this tool owns and it does not say what this tool writes"
+            ));
         }
         if self.private > 0 {
             let private = self.private;

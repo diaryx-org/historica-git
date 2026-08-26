@@ -106,17 +106,19 @@ which is 0001's rule about stating what could not be carried:
   symlink, an executable, a file of bytes, a path with a space in it and a
   rename, of which the two before the rename reproduced their object IDs
   exactly and the third differed in one blob — the link, for the reason above.
+  Measured on this repository: eighteen commits, every one signed, none of which
+  round-tripped. That number was the argument for historica's 0070, and decision
+  0005 is what closed it.
 - Two people converting one store and pushing to one remote push the same
   commits, so the second push is a no-op rather than a rewrite.
 
 ## Deferred
 
-- **Carrying the committer, the encoding, and the signature across**, which
-  would shrink the uncarried set to nothing. Historica's decision 0065 has the
-  mechanism — a dotted key is another tool's vocabulary, hashed, never
-  interpreted, and preserved across an amendment — but `record::Recording` has
-  no way to state one today, so this waits on a version of historica that
-  exposes it. That is 0001's rule working as intended rather than a blockage.
+- ~~**Carrying the committer, the encoding, and the signature across.**~~
+  Answered by [decision 0005](0005-the-facts-git-keeps-that-historica-has-no-word-for.md),
+  once historica's 0070 built the field this was waiting on — which is 0001's
+  rule working exactly as intended. The committer and the signature cross; the
+  encoding is a different kind of gap and is argued there.
 - **Submodules.** Git's `160000` entry names a commit of another repository and
   historica has no file that is one. Neither direction carries it.
 - **Where bookmarks become refs**, beyond the obvious mapping, and what becomes

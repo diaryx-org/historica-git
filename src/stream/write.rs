@@ -90,6 +90,15 @@ impl<W: Write> Writer<W> {
             self.out.write_all(encoding)?;
             self.out.write_all(b"\n")?;
         }
+        if let Some(signature) = &commit.signature {
+            self.out.write_all(b"gpgsig ")?;
+            self.out.write_all(&signature.kind)?;
+            self.out.write_all(b"\n")?;
+            self.data(&signature.data)?;
+            // Git ends the signature's data block with a newline, since the
+            // message's `data` line has to start one.
+            self.out.write_all(b"\n")?;
+        }
         // No newline after the message. Git writes none — a message that does
         // not end in one runs straight into the first `M` on the same line,
         // which is observable in `git fast-export` output and which
@@ -296,6 +305,55 @@ mod tests {
         assert_eq!(written(&command), b"blob\nmark :1\ndata 8\none\ntwo\n\n");
     }
 
+    /// A signed commit, in the shape `git fast-export --signed-commits=verbatim`
+    /// writes one, read and written back unchanged.
+    ///
+    /// Built here rather than added to the corpus because signing needs a key,
+    /// and a test that needs a key is a test that does not run. The counts are
+    /// computed rather than written down, since a hand-counted `data` line
+    /// tests the arithmetic and not the code.
+    #[test]
+    fn a_signed_commit_survives_being_read_and_written() {
+        let armour = "-----BEGIN PGP SIGNATURE-----\n\nabcd/+=\n-----END PGP SIGNATURE-----";
+        let message = "Start\n";
+        let stream = format!(
+            "commit refs/heads/main\n\
+             mark :1\n\
+             author Ada <ada@example.com> 1767348245 -0700\n\
+             committer Bo <bo@example.com> 1767348246 -0700\n\
+             gpgsig sha1 openpgp\n\
+             data {}\n{armour}\n\
+             data {}\n{message}\
+             M 100644 :2 a.txt\n\n",
+            armour.len(),
+            message.len(),
+        )
+        .into_bytes();
+
+        let commands = crate::stream::Reader::new(std::io::Cursor::new(&stream))
+            .collect::<Result<Vec<_>, _>>()
+            .expect("a signed commit reads");
+        let Some(Command::Commit(commit)) = commands.first() else {
+            panic!("expected a commit, got {commands:?}");
+        };
+        let signature = commit
+            .signature
+            .as_ref()
+            .expect("the signature came across");
+        assert_eq!(signature.kind, b"sha1 openpgp");
+        assert_eq!(signature.data, armour.as_bytes());
+
+        let mut writer = Writer::new(Vec::new());
+        for command in &commands {
+            writer.write(command).expect("a vector takes bytes");
+        }
+        assert_eq!(
+            writer.into_inner(),
+            stream,
+            "a signed commit did not write back as it read"
+        );
+    }
+
     #[test]
     fn a_path_holding_a_space_is_quoted_as_git_quotes_it() {
         let command = Command::Commit(Commit {
@@ -310,6 +368,7 @@ mod tests {
                 offset_minutes: -420,
             },
             encoding: None,
+            signature: None,
             message: b"m\n".to_vec(),
             from: None,
             merges: Vec::new(),

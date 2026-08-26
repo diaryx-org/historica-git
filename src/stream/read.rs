@@ -15,7 +15,9 @@ use std::fmt;
 use std::io::{self, BufRead};
 
 use super::quote::unquote;
-use super::{Blob, Change, Command, Commit, Content, DataRef, Mark, Mode, Person, Reset, Tag};
+use super::{
+    Blob, Change, Command, Commit, Content, DataRef, Mark, Mode, Person, Reset, Signature, Tag,
+};
 
 /// A stream this reader would not read, or an input it could not read from.
 #[derive(Debug)]
@@ -155,6 +157,16 @@ impl<R: BufRead> Reader<R> {
             }
         };
         let encoding = self.optional_field(b"encoding ")?;
+        // After `encoding` and before the message, which is where git writes
+        // it. A `gpgsig` with no data block after it is a truncated commit
+        // rather than a signature this reader can skip.
+        let signature = match self.optional_field(b"gpgsig ")? {
+            Some(kind) => Some(Signature {
+                kind,
+                data: self.data()?,
+            }),
+            None => None,
+        };
         let message = self.data()?;
         let from = match self.optional_field(b"from ")? {
             Some(line) => Some(self.data_ref(&line)?),
@@ -186,6 +198,7 @@ impl<R: BufRead> Reader<R> {
             author,
             committer,
             encoding,
+            signature,
             message,
             from,
             merges,

@@ -25,6 +25,7 @@ use historica::record::{self, Recording, Restriction};
 use historica::store::{STORE_DIR, Store};
 use historica::working::{Skipped, Working};
 
+use crate::carried;
 use crate::identity::Identity;
 use crate::stream::{Change, Command, Commit, DataRef, Mark, Person, Reader};
 use crate::tree::{Tree, Trees};
@@ -75,7 +76,12 @@ pub fn from_repository(repository: &Path, folder: &Path) -> Result<Report, Error
             "-M",
             "--show-original-ids",
             "--reencode=yes",
-            "--signed-commits=warn-strip",
+            // Decision 0004's measurement was that a signed commit does not
+            // round-trip, and historica's 0070 opened the door that closes it:
+            // the signature comes across verbatim and is recorded as a header
+            // this tool owns. `strip` would throw away the one fact that makes
+            // the commit what it is.
+            "--signed-commits=verbatim",
             "--signed-tags=strip",
         ])
         .stdout(Stdio::piped())
@@ -87,40 +93,23 @@ pub fn from_repository(repository: &Path, folder: &Path) -> Result<Report, Error
     // pipe nobody reads fills and stops the export halfway through.
     let complaints = child.stderr.take().expect("stderr was piped");
     let listening = std::thread::spawn(move || {
-        let mut signed = 0usize;
-        let mut said = Vec::new();
-        for line in BufReader::new(complaints).lines().map_while(Result::ok) {
-            if line.contains("stripping signature") {
-                signed += 1;
-            } else if !line.trim().is_empty() {
-                said.push(line);
-            }
-        }
-        (signed, said)
+        BufReader::new(complaints)
+            .lines()
+            .map_while(Result::ok)
+            .filter(|line| !line.trim().is_empty())
+            .collect::<Vec<_>>()
     });
 
     let stream = child.stdout.take().expect("stdout was piped");
     let outcome = from_stream(BufReader::new(stream), folder);
 
-    let (signed, said) = listening.join().unwrap_or((0, Vec::new()));
+    let said = listening.join().unwrap_or_default();
     let status = child.wait().map_err(Error::Spawn)?;
-    let mut report = outcome?;
+    let report = outcome?;
     if !status.success() {
         return Err(Error::GitFailed {
             status: status.code(),
             said,
-        });
-    }
-    if signed > 0 {
-        report.note(if signed == 1 {
-            "one commit was signed; git stripped the signature on the way out and \
-             historica has nowhere to put one"
-                .to_owned()
-        } else {
-            format!(
-                "{signed} commits were signed; git stripped the signatures on the \
-                 way out and historica has nowhere to put one"
-            )
         });
     }
     Ok(report)
@@ -143,6 +132,7 @@ pub fn from_stream<R: BufRead>(input: R, folder: &Path) -> Result<Report, Error>
         revisions: BTreeMap::new(),
         report: Report::default(),
         committers: 0,
+        signatures: 0,
         encodings: 0,
         tags: 0,
         references: Vec::new(),
@@ -179,6 +169,7 @@ struct Conversion {
     revisions: BTreeMap<Mark, RevisionId>,
     report: Report,
     committers: usize,
+    signatures: usize,
     encodings: usize,
     tags: usize,
     references: Vec<String>,
@@ -198,11 +189,31 @@ impl Conversion {
         let parents = self.parents(commit)?;
         let moves = self.moves(commit, &parent)?;
 
-        // Git states an author and a committer; historica records one person.
-        // Decision 0003 drops the committer, and counts it.
+        // Git states an author and a committer; historica records one person,
+        // and the author is the one it keeps. The committer is not thrown away
+        // for it — historica's decision 0070 lets this tool state a header of
+        // its own, and the committer is in the commit's bytes, so a revision
+        // that could not carry it could not be written back as the commit it
+        // came from.
         let author = commit.author.as_ref().unwrap_or(&commit.committer);
-        if commit.author.is_some() && commit.author != Some(commit.committer.clone()) {
+        let mut extensions = BTreeMap::new();
+        if commit.author.is_some() && commit.author.as_ref() != Some(&commit.committer) {
             self.committers += 1;
+            extensions.insert(
+                carried::COMMITTER.to_owned(),
+                carried::spell_person(&commit.committer),
+            );
+        }
+        if let Some(signature) = &commit.signature {
+            self.signatures += 1;
+            extensions.insert(
+                carried::SIGNATURE.to_owned(),
+                carried::spell(&signature.data),
+            );
+            extensions.insert(
+                carried::SIGNATURE_KIND.to_owned(),
+                carried::spell(&signature.kind),
+            );
         }
         if commit.encoding.is_some() {
             self.encodings += 1;
@@ -217,6 +228,7 @@ impl Conversion {
             at: Vec::new(),
             accepted: Default::default(),
             only: Restriction::Everything,
+            extensions,
             // Nothing stated, so every added file is sniffed. Git has no
             // better answer to hand over: a blob carries a mode and bytes and
             // no notion of text, and git's own tools sniff exactly as
@@ -300,12 +312,14 @@ impl Conversion {
             let committers = self.committers;
             self.report.note(if committers == 1 {
                 "one commit names a committer other than its author; historica \
-                 records one person and the author is the one it keeps"
+                 records one person, so the author is the revision's and the \
+                 committer is a `git.committer` header beside it"
                     .to_owned()
             } else {
                 format!(
                     "{committers} commits name a committer other than their author; \
-                     historica records one person and the author is the one it keeps"
+                     historica records one person, so the author is the revision's \
+                     and the committer is a `git.committer` header beside it"
                 )
             });
         }

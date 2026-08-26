@@ -151,8 +151,8 @@ fn a_repository_historica_can_hold_converts_back_to_itself() {
     let before = commits(&origin);
     assert_eq!(
         before.len(),
-        3,
-        "the repository this test builds has 3 commits"
+        4,
+        "the repository this test builds has 4 commits"
     );
 
     let store = folder("round-trip-store");
@@ -170,25 +170,26 @@ fn a_repository_historica_can_hold_converts_back_to_itself() {
 
 /// A history holding one of everything historica has a place for.
 fn build(at: &Path) {
-    let run = |args: &[&str]| {
+    // One person, one moment, so the commits do not depend on when the test ran
+    // or on whose machine ran it.
+    let as_committer = |who: (&str, &str), args: &[&str]| {
         let status = std::process::Command::new("git")
             .arg("-C")
             .arg(at)
             .args(args)
-            // One person, one moment, so the commits do not depend on when the
-            // test ran or on whose machine ran it.
             .env("GIT_AUTHOR_DATE", "2026-01-02T03:04:05-07:00")
             .env("GIT_COMMITTER_DATE", "2026-01-02T03:04:05-07:00")
             .env("GIT_AUTHOR_NAME", "Ada")
-            .env("GIT_COMMITTER_NAME", "Ada")
             .env("GIT_AUTHOR_EMAIL", "ada@example.com")
-            .env("GIT_COMMITTER_EMAIL", "ada@example.com")
+            .env("GIT_COMMITTER_NAME", who.0)
+            .env("GIT_COMMITTER_EMAIL", who.1)
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .status()
             .expect("git runs");
         assert!(status.success(), "git {args:?} failed");
     };
+    let run = |args: &[&str]| as_committer(("Ada", "ada@example.com"), args);
 
     run(&["init", "--quiet", "."]);
     // Not the machine's, whatever the machine's says: a signed commit is a
@@ -210,6 +211,15 @@ fn build(at: &Path) {
 
     run(&["mv", "a.txt", "b.txt"]);
     run(&["commit", "--quiet", "-m", "Rename a to b"]);
+
+    // A committer who is not the author, which historica records one of and
+    // which is therefore a `git.committer` header rather than a lost fact.
+    // Without it this commit would not be the commit it came from.
+    fs::write(at.join("b.txt"), "one\ntwo\nthree\n").expect("a file");
+    as_committer(
+        ("Bo", "bo@example.com"),
+        &["commit", "--quiet", "-a", "-m", "Applied from a patch"],
+    );
 }
 
 #[cfg(unix)]

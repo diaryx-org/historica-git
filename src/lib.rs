@@ -19,6 +19,7 @@
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
+pub mod carried;
 pub mod export;
 pub mod identity;
 pub mod import;

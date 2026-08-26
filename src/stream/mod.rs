@@ -21,7 +21,7 @@ mod quote;
 mod read;
 mod write;
 
-pub use quote::quote;
+pub use quote::{quote, unquote};
 pub use read::{Error, Reader};
 pub use write::Writer;
 
@@ -166,6 +166,12 @@ pub struct Commit {
     pub committer: Person,
     /// `encoding`, when the message is not UTF-8.
     pub encoding: Option<Vec<u8>>,
+    /// `gpgsig`, from `--signed-commits=verbatim`.
+    ///
+    /// Absent under the mode a conversion asks for when it is not carrying
+    /// signatures, and absent from every stream older git wrote, so this being
+    /// `None` says nothing about whether the commit was signed.
+    pub signature: Option<Signature>,
     /// The message, exactly as it was, without a trailing newline added or
     /// removed.
     pub message: Vec<u8>,
@@ -177,6 +183,21 @@ pub struct Commit {
     pub merges: Vec<DataRef>,
     /// What the commit did, in the order it was stated.
     pub changes: Vec<Change>,
+}
+
+/// A signature over a commit, as `gpgsig` states one.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct Signature {
+    /// What follows `gpgsig` on the line: `sha1 openpgp`.
+    ///
+    /// Kept as the rest of the line rather than split into the object hash and
+    /// the signature format, because git has spelled it both ways — one word
+    /// before the two-word form arrived — and a stream this crate wrote has to
+    /// be the stream it read whichever spelling it met.
+    pub kind: Vec<u8>,
+    /// The signature itself, unfolded: the stream carries the armour with real
+    /// newlines where the commit object indents each continuation with a space.
+    pub data: Vec<u8>,
 }
 
 /// `tag` — an annotated tag.
