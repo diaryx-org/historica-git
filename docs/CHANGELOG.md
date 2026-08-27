@@ -53,6 +53,7 @@ historica-git has not been released, and cannot be until historica is: decision
 ### Changed
 
 - **xtask** — cut releases with the shared tooling, not a sixth copy ([`aad15b2`](https://github.com/diaryx-org/historica-git/commit/aad15b2a7af842bc9883b5c44e90281486100a91))
+- **release** — read the shared cliff config, not a local copy ([`f5834d9`](https://github.com/diaryx-org/historica-git/commit/f5834d92ea49a7ce0f489b4404d42b34591f96c6))
 
 ### Behavioural changes
 
@@ -102,5 +103,9 @@ historica-git has not been released, and cannot be until historica is: decision
   `release-notes` no longer exist. Each now exits non-zero naming its
   replacement — `release <command>`, from diaryx-org/devtools, which must be on
   PATH. `cargo xtask ci` and the individual CI jobs are unchanged.
+
+- releasing this repository needs diaryx-org/devtools on PATH
+  for its git-cliff config as well as for `release` itself. Nothing in the tree
+  configures git-cliff any more.
 
 <!-- git-cliff:end -->
