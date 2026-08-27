@@ -8,9 +8,8 @@ release_branch = "main"
 # What to run before cutting. Each repo owns its own CI; this names it.
 verify = "cargo xtask ci"
 
-# What pushing the tag sets off. The warning printed before the push is handed
-# back to you is composed from these. Nothing here reaches crates.io: that is a
-# `cargo publish --workspace` somebody runs.
-[[tag_starts]]
-workflow = "release.yml"
-does = "cuts the GitHub release and writes its body from the changelog"
+# No `tag_starts`: nothing runs on the tag. The GitHub release is cut by `release`
+# itself, from the machine that pushed the tag — `release github-release <tag>` is
+# the same step run on its own — and every upload to crates.io is a
+# `cargo publish --workspace` somebody runs deliberately. So the warning before
+# the push says exactly that, rather than naming a workflow that no longer exists.
