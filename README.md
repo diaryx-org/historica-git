@@ -156,7 +156,7 @@ cargo xtask clippy     # or one
 
 ### Releasing
 
-`cargo xtask release <patch|minor|major|X.Y.Z>` does the mechanical half — bump
+`release release <patch|minor|major|X.Y.Z>` does the mechanical half — bump
 the version, regenerate the changelog's unreleased region into a section under
 the new version, commit both, tag — and stops before the push, which is asked
 for explicitly each time. See [`docs/CHANGELOG.md`](docs/CHANGELOG.md) for which

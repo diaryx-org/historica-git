@@ -1,0 +1,16 @@
+# What the shared release tooling needs to know about historica-git. Everything not
+# stated here is a default in lib/repo.nu — the manifest, the changelog path,
+# the cliff config, and that this is a Cargo workspace.
+name = "historica-git"
+url = "https://github.com/diaryx-org/historica-git"
+release_branch = "main"
+
+# What to run before cutting. Each repo owns its own CI; this names it.
+verify = "cargo xtask ci"
+
+# What pushing the tag sets off. The warning printed before the push is handed
+# back to you is composed from these. Nothing here reaches crates.io: that is a
+# `cargo publish --workspace` somebody runs.
+[[tag_starts]]
+workflow = "release.yml"
+does = "cuts the GitHub release and writes its body from the changelog"

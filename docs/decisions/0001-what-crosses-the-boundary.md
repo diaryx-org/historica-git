@@ -70,7 +70,7 @@ own dependencies and its own grammar, and historica gains neither.
 **A second crate in historica's workspace.** The dependency weight is not the
 argument — workspace members have independent dependency tables and `cargo
 build -p historica` never compiles a git library. What is shared is the rest:
-one lockfile, one `version = "…"` line that `cargo xtask bump` rewrites and
+one lockfile, one `version = "…"` line that `release bump` rewrites and
 asserts is unique, one `v*.*.*` tag namespace with no crate name in it, one
 `--workspace` CI sweep, and one MSRV floor that would silently become whatever
 a git library demands. Historica's 1.0 would then either cover a bridge that

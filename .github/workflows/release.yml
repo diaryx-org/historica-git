@@ -1,9 +1,9 @@
 name: Release
-# Cut the GitHub release for a version tag. `cargo xtask release <spec> --push`
+# Cut the GitHub release for a version tag. `release release <spec> --push`
 # is what creates and pushes that tag; this is what happens afterwards.
 #
 # As in ci.yml, this file holds no knowledge of the repository. The release body
-# is `cargo xtask release-notes "$TAG"`, which slices the section that tag's own
+# is `release release-notes "$TAG"`, which slices the section that tag's own
 # tree already carries in `docs/CHANGELOG.md` — so the notes on the release page
 # are byte-identical to the ones the repository ships, a handwritten release
 # intro comes along with them, and the runner needs no git-cliff.
@@ -35,7 +35,17 @@ jobs:
         # The notes are read from the tag's tree, but `gh release create` wants
         # the tag itself to exist as an object here too.
         fetch-depth: 0
-    - uses: dtolnay/rust-toolchain@stable
+    # The slicing rule — the section under `## <tag>`, up to the next `##`, plus
+    # the footer link — lives in diaryx-org/devtools rather than in this repo,
+    # because it was four implementations across three languages and is now one.
+    # It reads `.config/release.toml` from the tag's own tree, so a tag cut
+    # before that file existed cannot be re-run through this job.
+    - uses: actions/checkout@v7
+      with:
+        repository: diaryx-org/devtools
+        path: .release-tool
+    - uses: hustcer/setup-nu@v3
+      with: { version: "0.113.0" }
 
     - name: Name the tag
       run: echo "TAG=${{ inputs.tag || github.ref_name }}" >> "$GITHUB_ENV"
@@ -44,7 +54,7 @@ jobs:
     # than publish a surprise.
     - name: Check the tag against the manifest
       run: |
-        version=$(cargo xtask version)
+        version=$(.release-tool/release version)
         echo "Manifest version: $version"
         if [ "${TAG#v}" != "$version" ]; then
           echo "::error::tag $TAG does not name version $version"
@@ -54,7 +64,7 @@ jobs:
     # A tag whose changelog section is missing fails here, and the fix is to
     # write the section, re-tag, and re-run — not to hand-write notes that the
     # repository does not also carry.
-    - run: cargo xtask release-notes "$TAG" > notes.md
+    - run: .release-tool/release release-notes "$TAG" > notes.md
 
     - run: gh release create "$TAG" --title "$TAG" --notes-file notes.md --verify-tag
       env:

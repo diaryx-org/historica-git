@@ -7,7 +7,7 @@ Two halves, written two different ways.
 
 The bulleted groups below — **Added**, **Fixed**, **Changed**, and a
 **Behavioural changes** section under them — are **generated** from the commit
-log by `cargo xtask changelog --write`, which reads `.config/cliff.toml`.
+log by `release changelog --write`, which reads `.config/cliff.toml`.
 Anything inside a `git-cliff:begin` / `git-cliff:end` pair is rewritten on every
 run, so an edit made there is an edit thrown away.
 
