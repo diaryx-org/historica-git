@@ -7,7 +7,9 @@ Two halves, written two different ways.
 
 The bulleted groups below — **Added**, **Fixed**, **Changed**, and a
 **Behavioural changes** section under them — are **generated** from the commit
-log by `release changelog --write`, which reads `.config/cliff.toml`.
+log by `release changelog --write`, which reads the shared `cliff.toml` in
+diaryx-org/devtools — the same file, and the same style, in every repository
+here.
 Anything inside a `git-cliff:begin` / `git-cliff:end` pair is rewritten on every
 run, so an edit made there is an edit thrown away.
 
@@ -47,6 +49,10 @@ historica-git has not been released, and cannot be until historica is: decision
 
 - **stream** — read the object ID a tag carries ([`ff8e64c`](https://github.com/diaryx-org/historica-git/commit/ff8e64caa69107692bad6f57d496b53a2b20b961))
 - **import** — state no kind, which is what git has to say about one ([`28eb29d`](https://github.com/diaryx-org/historica-git/commit/28eb29d61e4c27baf20704eb89fa94392d27c6b0))
+
+### Changed
+
+- **xtask** — cut releases with the shared tooling, not a sixth copy ([`aad15b2`](https://github.com/diaryx-org/historica-git/commit/aad15b2a7af842bc9883b5c44e90281486100a91))
 
 ### Behavioural changes
 
@@ -91,5 +97,10 @@ historica-git has not been released, and cannot be until historica is: decision
   out where either is a bookmark, rather than the first branch in name order.
   A store whose bookmarks include both `main` and a name sorting above it now
   checks out `main`.
+
+- `cargo xtask version`, `bump`, `changelog`, `release`, and
+  `release-notes` no longer exist. Each now exits non-zero naming its
+  replacement — `release <command>`, from diaryx-org/devtools, which must be on
+  PATH. `cargo xtask ci` and the individual CI jobs are unchanged.
 
 <!-- git-cliff:end -->
