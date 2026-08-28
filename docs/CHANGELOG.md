@@ -33,6 +33,7 @@ historica-git has not been released, and cannot be until historica is: decision
 
 - **carried** — carry the committer and the signature across as headers ([`5090b85`](https://github.com/diaryx-org/historica-git/commit/5090b8510e3df210f3fc536015f3aacb643445cb))
 - **naming** — cross a ref that is only a pointer ([`f3f4f9a`](https://github.com/diaryx-org/historica-git/commit/f3f4f9aa37290676e02499fd564393b85b640b31))
+- **remembered** — run a conversion again onto what it made before ([`c4e5aee`](https://github.com/diaryx-org/historica-git/commit/c4e5aee448c37ce9a637e3be13b221f6e74229c3))
 
 ### Added
 
@@ -106,5 +107,15 @@ historica-git has not been released, and cannot be until historica is: decision
 - releasing this repository needs diaryx-org/devtools on PATH
   for its git-cliff config as well as for `release` itself. Nothing in the tree
   configures git-cliff any more.
+
+- `import` into a folder holding `history/` and `write` into a directory holding `.git` are accepted and brought up to date; both were refused as non-empty targets before.
+
+- both conversions write `.git/historica/commits` and `.git/historica/refs` into the repository; an import now writes into the repository's git directory, and nothing under `refs/` or `objects/`.
+
+- `import::Report` gains `held`, `moved`, and `onto`; `export::Report` gains `reused`, `deleted`, and `onto`, and its `branch` is `None` for an existing repository unless the working tree was brought up to it.
+
+- a directory rename in an imported commit is expanded against the commit's own parent tree rather than against the last tree materialised in stream order, which was another branch's whenever the stream switched branches.
+
+- `import::from_repository` on a path holding no `.git` fails with `NotARepository` rather than with git's own `fast-export` error.
 
 <!-- git-cliff:end -->
