@@ -9,8 +9,8 @@
 //! Locally, `cargo xtask ci` runs the same jobs in the same order against the
 //! same commands, so a green run here is a green run there.
 //!
-//! Cutting a release does not live here. It is `release <command>`, from
-//! diaryx-org/devtools, configured by `.config/release.toml` — the same tool
+//! Cutting a release does not live here. It is `dx <command>`, the shared
+//! tooling configured by `.config/release.toml` — the same tool
 //! prov, twig, leaf, flower, and the other historica repos all cut releases
 //! with, because five copies of one program is five places for it to drift.
 //!
@@ -163,7 +163,7 @@ fn main() -> ExitCode {
             ..,
         ] => Err(format!(
             "releasing moved out of xtask: `cargo xtask {command}` is now \
-                 `release {command}`,\nthe shared tooling this repo configures in \
+                 `dx {command}`,\nthe shared tooling this repo configures in \
                  .config/release.toml.\n\n{}",
             usage()
         )),
@@ -232,9 +232,7 @@ fn usage() -> String {
     // Releasing is not CI and is not here: it is one shared tool across the
     // org, so that the changelog contract has one implementation rather than
     // five that agree until they don't.
-    out.push_str(
-        "\nreleasing:  release <command>   (diaryx-org/devtools; see .config/release.toml)\n",
-    );
+    out.push_str("\nreleasing:  dx <command>   (the shared tooling; see .config/release.toml)\n");
     out
 }
 

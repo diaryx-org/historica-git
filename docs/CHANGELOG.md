@@ -7,9 +7,8 @@ Two halves, written two different ways.
 
 The bulleted groups below — **Added**, **Fixed**, **Changed**, and a
 **Behavioural changes** section under them — are **generated** from the commit
-log by `release changelog --write`, which reads the shared `cliff.toml` in
-diaryx-org/devtools — the same file, and the same style, in every repository
-here.
+log by `dx changelog --write`, which reads one shared `cliff.toml` — the same
+file, and the same style, in every repository here.
 Anything inside a `git-cliff:begin` / `git-cliff:end` pair is rewritten on every
 run, so an edit made there is an edit thrown away.
 

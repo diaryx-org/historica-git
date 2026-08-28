@@ -132,15 +132,18 @@ that diff deliberately.
 
 ## Building
 
-historica is not on crates.io yet, so the dependency is spelled with both a
-version and a path, and this repository builds when historica is checked out
-beside it:
+A clone and a build, with nothing beside it:
 
 ```console
-git clone git@github.com:diaryx-org/historica.git
 git clone git@github.com:diaryx-org/historica-git.git
 cd historica-git && cargo build
 ```
+
+The historica dependency is a version and no path, which is decision 0001's
+boundary made mechanical: this crate reaches the published API and has no way to
+reach anything else. A change in historica arrives here when it is released and
+bumped, and to work against an unreleased one you add the `[patch]` yourself,
+deliberately and temporarily.
 
 ## Development
 
@@ -156,15 +159,17 @@ cargo xtask clippy     # or one
 
 ### Releasing
 
-`release release <patch|minor|major|X.Y.Z>` does the mechanical half — bump
-the version, regenerate the changelog's unreleased region into a section under
-the new version, commit both, tag — and stops before the push, which is asked
-for explicitly each time. See [`docs/CHANGELOG.md`](docs/CHANGELOG.md) for which
-half of that file is generated and which is written by hand.
+`dx release <patch|minor|major|X.Y.Z>` does the mechanical half — bump the
+version, regenerate the changelog's unreleased region into a section under the
+new version, commit both, tag — and stops before the push, which is asked for
+explicitly each time. `dx` lives outside these repositories and is not
+published, so it is a maintainer's tool: nothing here is needed to build, test,
+or send a change. See [`docs/CHANGELOG.md`](docs/CHANGELOG.md) for which half of
+that file is generated and which is written by hand.
 
-Publishing waits on historica: a crate with a path dependency on an unpublished
-crate cannot be published, which is stated rather than discovered in decision
-0001.
+Publishing this crate needs the historica version it names to be on crates.io,
+which is decision 0001's boundary again: what can be published is what can be
+resolved.
 
 ## Licence
 

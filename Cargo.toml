@@ -20,10 +20,10 @@ categories = ["development-tools", "command-line-utilities"]
 [workspace]
 members = ["xtask"]
 
-# One `version = "…"` line for the whole repository, which is what `cargo xtask
-# bump` rewrites and what the package inherits. Keeping it here rather than in
-# `[package]` is what lets the release tooling assert that exactly one such line
-# exists — see `xtask/src/release.rs`.
+# One `version = "…"` line for the whole repository, which is what `dx bump`
+# rewrites and what the package inherits. Keeping it here rather than in
+# `[package]` is what lets the shared release tooling assert that exactly one
+# such line exists.
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
@@ -35,14 +35,15 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/diaryx-org/historica-git"
 
 [dependencies]
-# Both spellings on purpose. The path is what builds: historica is not on
-# crates.io yet, so nothing else would resolve. The version is what publishing
-# needs, and states the promise this crate is written against — historica 1.0's
-# semver API, decision 0001's only door into the store.
+# A version and no path, which is the whole of decision 0001's boundary made
+# mechanical: what this crate can reach is what historica published, because a
+# registry dependency is the only thing it has. A `pub(crate)` is not merely
+# discouraged here, it is unreachable, and a fact the API does not expose is a
+# change to historica rather than a hole opened on this side.
 #
-# Two consequences, both deliberate. A clone of this repository alone does not
-# build until historica is published or checked out beside it, and `cargo
-# publish` here cannot succeed before historica has been published there.
+# The consequence is deliberate. This repository builds against a historica that
+# has been published and no other, so a change over there arrives here when it
+# is released and bumped, and never before.
 historica = {version = "1.0.0-rc.1"}
 # Decision 0003 derives a file identifier as `SHA-256` of the commit's object ID
 # and a counter, so that a conversion re-run produces the store it produced
