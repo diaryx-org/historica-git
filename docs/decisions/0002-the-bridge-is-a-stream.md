@@ -71,6 +71,9 @@ as `historica/docs/loro.md` does for its own choice:
   signature is recorded as. (The default matters: git refuses a signed **tag**
   outright unless told what to do with it, which is a failure a person will
   meet on a real repository.)
-- Whether marks files are kept, which is what would make a conversion
-  incremental.
+- ~~Whether marks files are kept, which is what would make a conversion
+  incremental.~~ Answered by
+  [decision 0007](0007-a-conversion-onto-what-it-made-before.md), which keeps
+  a `<revision> <object ID>` file of its own rather than git's marks, and
+  says why.
 - What `encoding` on a commit becomes, given historica's documents are UTF-8.

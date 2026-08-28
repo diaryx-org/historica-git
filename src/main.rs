@@ -50,11 +50,30 @@ fn convert(repository: &str, folder: &str) -> Result<(), String> {
         report.revisions,
         folder.join("history").display()
     );
+    if report.held > 0 {
+        println!(
+            "{} of them the store already held, and were recognised rather than \
+             converted again",
+            report.held
+        );
+    }
     if !report.bookmarks.is_empty() {
         println!("\nbookmarks:");
         for bookmark in &report.bookmarks {
             println!("  - {bookmark}");
         }
+    }
+    if !report.moved.is_empty() {
+        println!("\nbookmarks moved to where git has the branch:");
+        for bookmark in &report.moved {
+            println!("  - {bookmark}");
+        }
+    }
+    if report.onto {
+        println!(
+            "\nthe folder was left as it was; `historica update` is what brings it \
+             forward"
+        );
     }
     say(&report.uncarried);
     Ok(())
@@ -74,14 +93,29 @@ fn write(folder: &str, repository: &str) -> Result<(), String> {
         report.commits,
         repository.display()
     );
+    if report.reused > 0 {
+        println!(
+            "{} the repository already held, and were named rather than written again",
+            report.reused
+        );
+    }
     if !report.references.is_empty() {
         println!("\nrefs:");
         for reference in &report.references {
             println!("  - {reference}");
         }
     }
+    if !report.deleted.is_empty() {
+        println!("\nrefs deleted, because the store no longer names them:");
+        for reference in &report.deleted {
+            println!("  - {reference}");
+        }
+    }
     if let Some(branch) = &report.branch {
-        println!("\nchecked out {branch}");
+        match report.onto {
+            true => println!("\nthe working tree was brought up to {branch}"),
+            false => println!("\nchecked out {branch}"),
+        }
     }
     say(&report.uncarried);
     Ok(())
@@ -106,10 +140,14 @@ usage: historica-git <command>
 
 commands:
 
-  import <repository> <folder>   convert <repository> into a new store at <folder>
+  import <repository> <folder>   convert <repository> into the store at <folder>
   write  <folder> <repository>   write the store at <folder> out as a git repository
 
-Each target must be empty or absent: a conversion only writes where it can be
-sure it owns everything it removes. `git` must be on PATH, which decision 0002
-makes this tool's one dependency.
+A target that is empty or absent gets a whole conversion. A folder already
+holding a store, or a directory already holding a repository, gets what the
+other side has gained since — decision 0007 — and nothing of a person's is
+touched: a second import writes into `history/` and leaves the folder for
+`historica update`, and a second write moves only refs this tool made or git
+left where it found them. Anything else in the way is refused. `git` must be
+on PATH, which decision 0002 makes this tool's one dependency.
 ";

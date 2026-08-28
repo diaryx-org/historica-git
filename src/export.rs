@@ -8,8 +8,10 @@
 //! revision it came from — the tree, the parents, the author line, the message,
 //! and a committer that is the author restated rather than read from the clock
 //! — so converting one store twice, or on two machines, produces the same
-//! commits, and the commit-to-revision correspondence needs filing nowhere. Ask
-//! `git fast-import` for a marks file when you want it.
+//! commits, and the commit-to-revision correspondence needs filing nowhere for
+//! the sake of correctness. Decision 0007 files it anyway, in the repository,
+//! for the sake of not sending a commit git already has: a revision the
+//! repository remembers is named by object ID rather than written again.
 //!
 //! What historica holds and git does not — supersession, a contested file, a
 //! forgotten payload — is reported or refused, never approximated, which is
@@ -25,6 +27,8 @@ use historica::store::{Content, STORE_DIR, Store};
 use historica::tree::{Kind, Tree, TreeContest};
 
 use crate::carried;
+use crate::plumbing::{Pointed, Repository};
+use crate::remembered::{Commits, DIRECTORY, Left, Refs};
 use crate::stream::{Blob, Change, Command, Commit, Content as Carried, DataRef, Mark, Mode};
 use crate::stream::{Person, Reset, Signature, Writer};
 
@@ -61,10 +65,17 @@ pub struct Report {
     pub revisions: usize,
     /// Commits written to the stream.
     pub commits: usize,
+    /// Commits the repository already held, named rather than written again.
+    pub reused: usize,
     /// Refs the conversion moved.
     pub references: Vec<String>,
+    /// Refs the conversion deleted, because it made them and the store no
+    /// longer names them.
+    pub deleted: Vec<String>,
     /// The branch the conversion would have a fresh repository check out.
     pub branch: Option<String>,
+    /// Whether the repository existed before this conversion.
+    pub onto: bool,
     /// One line per kind of fact that did not cross, for a person to read.
     pub uncarried: Vec<String>,
 }
@@ -75,32 +86,73 @@ impl Report {
     }
 }
 
-/// Convert the store under `folder` into a git repository at `repository`.
+/// Convert the store under `folder` into the git repository at `repository`.
 ///
-/// Runs `git init` and then `git fast-import`. The repository must be empty or
-/// absent, for the reason import's target must be: a conversion only writes
-/// where it can be sure it owns everything it touches.
+/// An empty or absent target gets `git init` and a whole conversion. A target
+/// holding a repository gets what the store has gained since it was last
+/// written — or, for a repository this tool never wrote, every commit and no
+/// ref that git already has pointing elsewhere. Anything else is refused, for
+/// the reason import's target must be free: a conversion only writes where it
+/// can be sure it owns everything it touches.
 pub fn to_repository(folder: &Path, repository: &Path) -> Result<Report, Error> {
-    free(repository)?;
-    std::fs::create_dir_all(repository).map_err(|error| Error::io(repository, error))?;
+    let (repository, onto) = match Repository::at(repository) {
+        Some(existing) => (existing, true),
+        None => {
+            free(repository)?;
+            std::fs::create_dir_all(repository).map_err(|error| Error::io(repository, error))?;
+            let started = Process::new("git")
+                .arg("-C")
+                .arg(repository)
+                .args(["init", "--quiet"])
+                .status()
+                .map_err(Error::Spawn)?;
+            if !started.success() {
+                return Err(Error::GitFailed {
+                    status: started.code(),
+                    said: vec!["`git init` refused the target directory".to_owned()],
+                });
+            }
+            let made = Repository::at(repository).ok_or_else(|| Error::NotFree {
+                at: repository.to_path_buf(),
+                because: "`git init` ran and left no `.git` here".to_owned(),
+            })?;
+            (made, false)
+        }
+    };
 
-    let started = Process::new("git")
-        .arg("-C")
-        .arg(repository)
-        .args(["init", "--quiet"])
-        .status()
-        .map_err(Error::Spawn)?;
-    if !started.success() {
-        return Err(Error::GitFailed {
-            status: started.code(),
-            said: vec!["`git init` refused the target directory".to_owned()],
-        });
+    let git_dir = repository.git_dir()?;
+    let mut commits = Commits::read(&git_dir)?;
+    // A remembered commit the repository no longer holds — somebody ran `gc`
+    // with nothing pointing at it — is forgotten, and the revision is sent
+    // again, which decision 0004 makes the same commit.
+    let holding = repository.holding(commits.oids())?;
+    for gone in commits
+        .oids()
+        .filter(|oid| !holding.contains(*oid))
+        .map(str::to_owned)
+        .collect::<Vec<_>>()
+    {
+        commits.remove_oid(&gone);
     }
+    let known = Known {
+        commits,
+        refs: Refs::read(&git_dir)?,
+        current: repository.refs()?,
+        null: repository.null_oid()?,
+    };
+    // Asked now, against the HEAD the person last checked out. Once the refs
+    // have moved, an untouched index reads as a working tree full of changes
+    // against the new one, which is the opposite of what the question means.
+    let clean = onto && repository.is_clean()?;
 
+    let marks_file = git_dir.join(DIRECTORY).join("marks.tmp");
+    std::fs::create_dir_all(git_dir.join(DIRECTORY))
+        .map_err(|error| Error::io(&git_dir.join(DIRECTORY), error))?;
     let mut child = Process::new("git")
         .arg("-C")
-        .arg(repository)
+        .arg(repository.path())
         .args(["fast-import", "--quiet", "--force"])
+        .arg(format!("--export-marks={}", marks_file.display()))
         .stdin(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
@@ -118,18 +170,68 @@ pub fn to_repository(folder: &Path, repository: &Path) -> Result<Report, Error> 
     });
 
     let stream = child.stdin.take().expect("stdin was piped");
-    let outcome = to_stream(folder, stream);
+    let outcome = convert(folder, stream, &known);
 
     let said = listening.join().unwrap_or_default();
     let status = child.wait().map_err(Error::Spawn)?;
-    let mut report = outcome?;
+    let mut written = match outcome {
+        Ok(written) => written,
+        Err(error) => {
+            let _ = std::fs::remove_file(&marks_file);
+            return Err(error);
+        }
+    };
     if !status.success() {
+        let _ = std::fs::remove_file(&marks_file);
         return Err(Error::GitFailed {
             status: status.code(),
             said,
         });
     }
-    check_out(repository, &mut report)?;
+
+    // What git made of what was sent. `--export-marks` is how object IDs are
+    // learned, as decision 0004 said it would be.
+    let marks = read_marks(&marks_file);
+    let _ = std::fs::remove_file(&marks_file);
+    let marks = marks?;
+    let mut commits = known.commits;
+    for (revision, mark) in &written.sent {
+        if let Some(oid) = marks.get(mark) {
+            commits.insert(*revision, oid.clone());
+        }
+    }
+    commits.write(&git_dir)?;
+
+    // The record carried forward, not rewritten: a ref held back keeps the
+    // line that held it back, or the next write would forget why and undo a
+    // deletion somebody meant. What this write moved is marked as made; what
+    // it merely found in agreement keeps whatever it was.
+    let mut left = known.refs.to_map();
+    for (reference, target) in &written.ours {
+        let oid = match target {
+            DataRef::Oid(oid) => Some(oid.clone()),
+            DataRef::Mark(mark) => marks.get(mark).cloned(),
+        };
+        if let Some(oid) = oid {
+            let made = written.moved.contains(reference) || known.refs.made(reference);
+            left.insert(reference.clone(), Left { oid, made });
+        }
+    }
+    for reference in &written.deleted {
+        left.remove(reference);
+    }
+    Refs::write(&git_dir, &left)?;
+
+    let mut report = std::mem::take(&mut written.report);
+    report.onto = onto;
+    if onto {
+        // An existing repository has a HEAD of its own; `branch` is only what
+        // the working tree was actually brought up to.
+        report.branch = None;
+        catch_up(&repository, &written, clean, &mut report)?;
+    } else {
+        check_out(&repository, &mut report)?;
+    }
     Ok(report)
 }
 
@@ -147,7 +249,7 @@ pub fn to_repository(folder: &Path, repository: &Path) -> Result<Report, Error> 
 /// file as deleted, which is an alarming way to hand somebody a conversion. Both
 /// are git writing to its own repository, which is decision 0002's arrangement
 /// rather than an exception to it: still no git object written here.
-fn check_out(repository: &Path, report: &mut Report) -> Result<(), Error> {
+fn check_out(repository: &Repository, report: &mut Report) -> Result<(), Error> {
     let Some(branch) = report.branch.clone() else {
         report.note(
             "nothing says which branch is checked out, because no bookmark named a \
@@ -157,33 +259,47 @@ fn check_out(repository: &Path, report: &mut Report) -> Result<(), Error> {
         );
         return Ok(());
     };
+    repository.run(&["symbolic-ref", "HEAD", &format!("{HEADS}{branch}")])?;
+    repository.run(&["reset", "--quiet", "--hard"])?;
+    Ok(())
+}
 
-    for arguments in [
-        vec![
-            "symbolic-ref".to_owned(),
-            "HEAD".to_owned(),
-            format!("{HEADS}{branch}"),
-        ],
-        vec![
-            "reset".to_owned(),
-            "--quiet".to_owned(),
-            "--hard".to_owned(),
-        ],
-    ] {
-        let status = Process::new("git")
-            .arg("-C")
-            .arg(repository)
-            .args(&arguments)
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
-            .map_err(Error::Spawn)?;
-        if !status.success() {
-            return Err(Error::GitFailed {
-                status: status.code(),
-                said: vec![format!("`git {}` failed", arguments.join(" "))],
-            });
-        }
+/// Bring an existing repository's working tree up to the branch HEAD names,
+/// where that branch moved and there is nothing of anybody's in the way.
+///
+/// The target was somebody's repository before this ran, so the rule is
+/// import's: only remove what this tool can be sure it owns. A clean index and
+/// working tree are exactly that — `reset --hard` leaves untracked files alone
+/// — and anything else is left as it is and said.
+fn catch_up(
+    repository: &Repository,
+    written: &Written,
+    clean: bool,
+    report: &mut Report,
+) -> Result<(), Error> {
+    let Some(head) = repository.head()? else {
+        return Ok(());
+    };
+    let branch = head.strip_prefix(HEADS).unwrap_or(&head).to_owned();
+    if written.deleted.contains(&head) {
+        report.note(format!(
+            "HEAD is on `{branch}`, which this conversion deleted; git will treat \
+             the next commit as the first on a branch of that name"
+        ));
+        return Ok(());
+    }
+    if !written.moved.contains(&head) {
+        return Ok(());
+    }
+    if clean {
+        repository.run(&["reset", "--quiet", "--hard"])?;
+        report.branch = Some(branch);
+    } else {
+        report.note(format!(
+            "HEAD is on `{branch}`, which moved, and the working tree has changes of \
+             its own; it was left as it is, and `git reset --hard` is what brings \
+             it up once they are dealt with"
+        ));
     }
     Ok(())
 }
@@ -191,12 +307,57 @@ fn check_out(repository: &Path, report: &mut Report) -> Result<(), Error> {
 /// The same conversion, written wherever the caller wants the bytes.
 ///
 /// This is where the work is, and it needs no git — which is what makes the
-/// whole of it testable, exactly as `import::from_stream` is.
+/// whole of it testable, exactly as `import::from_stream` is. Written this way
+/// it is always a whole conversion: nothing is remembered, so nothing is left
+/// out.
 pub fn to_stream<W: Write>(folder: &Path, out: W) -> Result<Report, Error> {
+    convert(folder, out, &Known::nothing()).map(|written| written.report)
+}
+
+/// What the repository already holds, and where it stands.
+struct Known {
+    /// The commits this tool wrote before, that git still holds.
+    commits: Commits,
+    /// Where the last write left each ref it moved.
+    refs: Refs,
+    /// Every ref git has now.
+    current: BTreeMap<String, Pointed>,
+    /// The object ID that names nothing, at this repository's width — what a
+    /// ref is reset to when it is being deleted.
+    null: String,
+}
+
+impl Known {
+    fn nothing() -> Self {
+        Known {
+            commits: Commits::default(),
+            refs: Refs::none(),
+            current: BTreeMap::new(),
+            null: "0".repeat(40),
+        }
+    }
+}
+
+/// What a conversion put in the stream, for the caller that runs git on it.
+struct Written {
+    report: Report,
+    /// Each revision sent, by the mark it was sent under.
+    sent: BTreeMap<RevisionId, Mark>,
+    /// Every ref this tool now answers for — moved this time, or already
+    /// where the store says — and what it points at.
+    ours: BTreeMap<String, DataRef>,
+    /// Refs moved this time.
+    moved: BTreeSet<String>,
+    /// Refs deleted this time.
+    deleted: BTreeSet<String>,
+}
+
+fn convert<W: Write>(folder: &Path, out: W, known: &Known) -> Result<Written, Error> {
     let store = Store::open(folder.join(STORE_DIR))?;
     let mut conversion = Conversion {
         writer: Writer::new(out),
-        marks: BTreeMap::new(),
+        placed: BTreeMap::new(),
+        sent: BTreeMap::new(),
         blobs: BTreeMap::new(),
         next: 0,
         report: Report::default(),
@@ -207,19 +368,32 @@ pub fn to_stream<W: Write>(folder: &Path, out: W) -> Result<Report, Error> {
         invalidated: 0,
         unreadable: BTreeSet::new(),
         branches: Vec::new(),
+        ours: BTreeMap::new(),
+        moved: BTreeSet::new(),
+        deleted: BTreeSet::new(),
+        held_back: Vec::new(),
     };
-    conversion.run(&store)?;
+    conversion.run(&store, known)?;
     let branch = checked_out(&conversion.branches);
     let mut report = conversion.report;
     report.branch = branch;
-    Ok(report)
+    Ok(Written {
+        report,
+        sent: conversion.sent,
+        ours: conversion.ours,
+        moved: conversion.moved,
+        deleted: conversion.deleted,
+    })
 }
 
 /// One conversion in progress.
 struct Conversion<W> {
     writer: Writer<W>,
-    /// Where each revision landed in the stream.
-    marks: BTreeMap<RevisionId, Mark>,
+    /// Where each visible revision is in git: the mark it was sent under, or
+    /// the object ID the repository already has it as.
+    placed: BTreeMap<RevisionId, DataRef>,
+    /// The revisions sent this time.
+    sent: BTreeMap<RevisionId, Mark>,
     /// A blob per distinct content, so a file unchanged across a thousand
     /// revisions is written once.
     blobs: BTreeMap<RevisionId, Mark>,
@@ -235,10 +409,15 @@ struct Conversion<W> {
     /// one of them can be checked out. Nothing in the store says which — see
     /// [`to_repository`].
     branches: Vec<String>,
+    ours: BTreeMap<String, DataRef>,
+    moved: BTreeSet<String>,
+    deleted: BTreeSet<String>,
+    /// Refs the store names that were not moved, and why.
+    held_back: Vec<String>,
 }
 
 impl<W: Write> Conversion<W> {
-    fn run(&mut self, store: &Store) -> Result<(), Error> {
+    fn run(&mut self, store: &Store, known: &Known) -> Result<(), Error> {
         let history = store.history();
         let superseded = history.superseded();
 
@@ -251,7 +430,18 @@ impl<W: Write> Conversion<W> {
             .collect();
         self.report.revisions = history.len();
 
+        // Decision 0007: what the repository already holds is named, not sent.
+        for id in &visible {
+            if let Some(oid) = known.commits.oid_of(id) {
+                self.placed.insert(*id, DataRef::Oid(oid.to_owned()));
+                self.report.reused += 1;
+            }
+        }
+
         for id in order(&history, &visible) {
+            if self.placed.contains_key(&id) {
+                continue;
+            }
             let document = store.get(&id)?.ok_or(Error::Missing { revision: id })?;
             let parents = self.parents(&history, &visible, &superseded, document);
             let tree = self.tree(store, &id)?;
@@ -270,15 +460,16 @@ impl<W: Write> Conversion<W> {
                 encoding: None,
                 signature,
                 message: document.message.as_bytes().to_vec(),
-                from: parents.first().map(|mark| DataRef::Mark(*mark)),
-                merges: parents.iter().skip(1).map(|m| DataRef::Mark(*m)).collect(),
+                from: parents.first().cloned(),
+                merges: parents.iter().skip(1).cloned().collect(),
                 changes,
             }))?;
-            self.marks.insert(id, mark);
+            self.placed.insert(id, DataRef::Mark(mark));
+            self.sent.insert(id, mark);
             self.report.commits += 1;
         }
 
-        self.refs(store, &history, &visible)?;
+        self.refs(store, &history, &visible, known)?;
         self.write(&Command::Done)?;
         self.writer.flush().map_err(Error::Write)?;
         self.finish();
@@ -454,7 +645,8 @@ impl<W: Write> Conversion<W> {
         Ok(merged.tree)
     }
 
-    /// The marks this revision's commit stands on.
+    /// Where in git this revision's commit stands: on marks sent this time, or
+    /// on commits the repository already has.
     ///
     /// A parent that was superseded is not a commit git has, so this walks up
     /// to the nearest ancestor that is one. The shape of the history is kept;
@@ -465,8 +657,8 @@ impl<W: Write> Conversion<W> {
         visible: &BTreeSet<RevisionId>,
         superseded: &BTreeSet<RevisionId>,
         document: &historica::format::RevisionDocument,
-    ) -> Vec<Mark> {
-        let mut marks = Vec::new();
+    ) -> Vec<DataRef> {
+        let mut parents = Vec::new();
         for parent in &document.parents {
             let mut standing = *parent;
             let mut guard = 0;
@@ -484,23 +676,26 @@ impl<W: Write> Conversion<W> {
                     break;
                 }
             }
-            if let Some(mark) = self.marks.get(&standing)
-                && !marks.contains(mark)
+            if let Some(placed) = self.placed.get(&standing)
+                && !parents.contains(placed)
             {
-                marks.push(*mark);
+                parents.push(placed.clone());
             }
         }
-        marks
+        parents
     }
 
-    /// Move the refs, then take the staging ref away.
+    /// Move the refs, delete the ones this tool made that nothing names any
+    /// more, then take the staging ref away.
     fn refs(
         &mut self,
         store: &Store,
         history: &historica::core::History,
         visible: &BTreeSet<RevisionId>,
+        known: &Known,
     ) -> Result<(), Error> {
         let mut named: BTreeSet<RevisionId> = BTreeSet::new();
+        let mut wanted: Vec<(String, DataRef, RevisionId, bool)> = Vec::new();
 
         for (name, bookmark) in store.names() {
             // Historica's decision 0062: a private bookmark's name stays
@@ -513,7 +708,7 @@ impl<W: Write> Conversion<W> {
             let Some((target, directory)) = resolve(history, &bookmark.target) else {
                 continue;
             };
-            let Some(mark) = self.marks.get(&target).copied() else {
+            let Some(placed) = self.placed.get(&target).cloned() else {
                 continue;
             };
             let Some(reference) = git_ref(directory, name) else {
@@ -522,41 +717,149 @@ impl<W: Write> Conversion<W> {
                 ));
                 continue;
             };
-            if directory == HEADS {
-                self.branches.push(name.clone());
-            }
-            self.write(&Command::Reset(Reset {
-                reference: reference.clone().into_bytes(),
-                from: Some(DataRef::Mark(mark)),
-            }))?;
-            self.report.references.push(reference);
-            named.insert(target);
+            wanted.push((reference, placed, target, directory == HEADS));
         }
 
-        // A head nobody bookmarked is still work somebody did, and a commit no
-        // ref reaches is a commit git will collect. So it goes somewhere out of
-        // the way rather than nowhere.
+        for (reference, placed, target, branch) in wanted {
+            if self.place(&reference, placed, known)? {
+                named.insert(target);
+                if branch {
+                    self.branches.push(reference[HEADS.len()..].to_owned());
+                }
+            }
+        }
+
+        // A head nobody bookmarked — or whose ref could not be moved — is
+        // still work somebody did, and a commit no ref reaches is a commit git
+        // will collect. So it goes somewhere out of the way rather than
+        // nowhere.
         for head in history.heads() {
             if !visible.contains(&head) || named.contains(&head) {
                 continue;
             }
-            let Some(mark) = self.marks.get(&head).copied() else {
+            let Some(placed) = self.placed.get(&head).cloned() else {
                 continue;
             };
             let reference = format!("{UNNAMED}/{}", head.abbreviate(12));
-            self.write(&Command::Reset(Reset {
-                reference: reference.clone().into_bytes(),
-                from: Some(DataRef::Mark(mark)),
-            }))?;
-            self.report.references.push(reference);
+            self.place(&reference, placed, known)?;
+        }
+
+        // What a write of this tool's made and the store no longer names.
+        // Deleted where git still has it as it was left; otherwise somebody
+        // else's now. A ref the record merely found in agreement — one git
+        // had before this tool ever wrote here — is not this tool's to delete,
+        // however the store feels about it.
+        for (reference, left) in known.refs.iter() {
+            if !left.made || self.ours.contains_key(reference) || self.held_back_names(reference) {
+                continue;
+            }
+            match known.current.get(reference) {
+                Some(pointed) if pointed.commit == left.oid => {
+                    self.write(&Command::Reset(Reset {
+                        reference: reference.as_bytes().to_vec(),
+                        from: Some(DataRef::Oid(known.null.clone())),
+                    }))?;
+                    self.report.deleted.push(reference.to_owned());
+                    self.deleted.insert(reference.to_owned());
+                }
+                Some(_) => self.held_back.push(format!(
+                    "`{reference}` was not deleted: the store no longer names it, but \
+                     git moved it since the last write, so it is somebody's now"
+                )),
+                None => {}
+            }
         }
 
         // Take the staging ref away, which fast-import spells as a reset to the
-        // null object ID.
-        self.write(&Command::Reset(Reset {
-            reference: STAGING.as_bytes().to_vec(),
-            from: Some(DataRef::Oid("0".repeat(40))),
-        }))
+        // null object ID. Only where something was parked there: a conversion
+        // that sent nothing never made it.
+        if !self.sent.is_empty() {
+            self.write(&Command::Reset(Reset {
+                reference: STAGING.as_bytes().to_vec(),
+                from: Some(DataRef::Oid(known.null.clone())),
+            }))?;
+        }
+        Ok(())
+    }
+
+    /// Move one ref, or note that it is already right, or say why neither.
+    /// Answers whether the ref now stands where the store says.
+    fn place(&mut self, reference: &str, target: DataRef, known: &Known) -> Result<bool, Error> {
+        match self.decide(reference, &target, known) {
+            Decided::Move => {
+                self.write(&Command::Reset(Reset {
+                    reference: reference.as_bytes().to_vec(),
+                    from: Some(target.clone()),
+                }))?;
+                self.report.references.push(reference.to_owned());
+                self.moved.insert(reference.to_owned());
+                self.ours.insert(reference.to_owned(), target);
+                Ok(true)
+            }
+            Decided::Already => {
+                self.ours.insert(reference.to_owned(), target);
+                Ok(true)
+            }
+            Decided::HeldBack(because) => {
+                self.held_back
+                    .push(format!("`{reference}` was not moved: {because}"));
+                Ok(false)
+            }
+        }
+    }
+
+    /// Whether a ref the store names has already been reported held back.
+    fn held_back_names(&self, reference: &str) -> bool {
+        let quoted = format!("`{reference}`");
+        self.held_back.iter().any(|line| line.starts_with(&quoted))
+    }
+
+    /// Decision 0007's rule for one ref: the side that moved it since the last
+    /// write is the side that is right, and git having moved it is a reason to
+    /// `import` before writing rather than a reason to overwrite.
+    fn decide(&self, reference: &str, target: &DataRef, known: &Known) -> Decided {
+        let now = known.current.get(reference);
+        let left = known.refs.left(reference);
+        match now {
+            None => match left {
+                // Git deleted a ref this tool made. The store still names it,
+                // and recreating it would undo a deletion somebody meant.
+                Some(_) => Decided::HeldBack(
+                    "git deleted it since the last write, and the store still names \
+                     it; `import` carries the deletion across, or point the bookmark \
+                     somewhere and write again"
+                        .to_owned(),
+                ),
+                None => Decided::Move,
+            },
+            Some(pointed) => {
+                if pointed.annotated {
+                    return Decided::HeldBack(
+                        "git has it as an annotated tag, which is an object of its own \
+                         and not this tool's to replace"
+                            .to_owned(),
+                    );
+                }
+                if let DataRef::Oid(oid) = target
+                    && *oid == pointed.commit
+                {
+                    return Decided::Already;
+                }
+                match left {
+                    Some(left) if left == pointed.commit => Decided::Move,
+                    Some(_) => Decided::HeldBack(
+                        "git moved it since the last write; `import` first, so that \
+                         the store sees where it went"
+                            .to_owned(),
+                    ),
+                    None => Decided::HeldBack(
+                        "git already has it, pointing elsewhere, and this tool never \
+                         wrote it; `import` first, so that the store sees it"
+                            .to_owned(),
+                    ),
+                }
+            }
+        }
     }
 
     fn mark(&mut self) -> Mark {
@@ -569,7 +872,7 @@ impl<W: Write> Conversion<W> {
     }
 
     fn finish(&mut self) {
-        let uncrossed = self.report.revisions - self.report.commits;
+        let uncrossed = self.report.revisions - self.report.commits - self.report.reused;
         if uncrossed > 0 {
             self.report.note(if uncrossed == 1 {
                 "one revision was superseded by another and did not cross; git has \
@@ -638,12 +941,48 @@ impl<W: Write> Conversion<W> {
                 format!("{private} bookmarks are private and their names stayed behind")
             });
         }
+        for line in std::mem::take(&mut self.held_back) {
+            self.report.note(line);
+        }
         self.report.note(
             "change IDs did not cross; git has nowhere to put one, and decision 0003 \
              derives one from a commit rather than the other way about"
                 .to_owned(),
         );
     }
+}
+
+/// What to do with one ref the store names.
+enum Decided {
+    Move,
+    Already,
+    HeldBack(String),
+}
+
+/// The marks file `git fast-import --export-marks` writes: `:<mark> <oid>`.
+fn read_marks(at: &Path) -> Result<BTreeMap<Mark, String>, Error> {
+    let text = match std::fs::read_to_string(at) {
+        Ok(text) => text,
+        // Nothing was sent, so nothing was marked, and git may write no file.
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(error) => return Err(Error::io(at, error)),
+    };
+    let mut marks = BTreeMap::new();
+    for line in text.lines() {
+        if line.trim().is_empty() {
+            continue;
+        }
+        let parsed = line
+            .split_once(' ')
+            .and_then(|(mark, oid)| Some((mark.strip_prefix(':')?.parse::<u64>().ok()?, oid)));
+        let Some((mark, oid)) = parsed else {
+            return Err(Error::Marks {
+                line: line.to_owned(),
+            });
+        };
+        marks.insert(Mark(mark), oid.to_owned());
+    }
+    Ok(marks)
 }
 
 /// Which branch a fresh repository has checked out.

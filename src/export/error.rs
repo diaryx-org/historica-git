@@ -38,6 +38,17 @@ pub enum Error {
         /// What is in the way.
         because: String,
     },
+    /// A question asked of git besides the stream went unanswered.
+    Plumbing(crate::plumbing::Error),
+    /// What the repository remembers of earlier conversions could not be read
+    /// or written.
+    Remembered(crate::remembered::Error),
+    /// The marks file `git fast-import` was asked for did not say what it
+    /// should.
+    Marks {
+        /// The line that would not read.
+        line: String,
+    },
     /// The history names a revision whose document this store does not hold.
     Missing {
         /// The revision.
@@ -105,6 +116,13 @@ impl fmt::Display for Error {
                  owns everything it removes",
                 at.display()
             ),
+            Error::Plumbing(error) => write!(f, "{error}"),
+            Error::Remembered(error) => write!(f, "{error}"),
+            Error::Marks { line } => write!(
+                f,
+                "`git fast-import --export-marks` wrote `{line}`, which is not a \
+                 mark and an object ID"
+            ),
             Error::Missing { revision } => write!(
                 f,
                 "the history names revision {}, and this store does not hold its \
@@ -149,5 +167,17 @@ impl From<historica::store::StoreError> for Error {
 impl From<historica::store::MaterialiseError> for Error {
     fn from(error: historica::store::MaterialiseError) -> Self {
         Error::Materialise(Box::new(error))
+    }
+}
+
+impl From<crate::plumbing::Error> for Error {
+    fn from(error: crate::plumbing::Error) -> Self {
+        Error::Plumbing(error)
+    }
+}
+
+impl From<crate::remembered::Error> for Error {
+    fn from(error: crate::remembered::Error) -> Self {
+        Error::Remembered(error)
     }
 }

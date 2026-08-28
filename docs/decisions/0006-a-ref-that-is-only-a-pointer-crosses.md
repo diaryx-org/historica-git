@@ -99,6 +99,9 @@ reach the case on the machine this was written on.
   but a bigger one, because a tag is an object rather than a header on one.
 - **Which branch was checked out**, if it should be a fact the store keeps
   rather than one the conversion picks.
-- **Deleting a ref the store no longer names**, which is what a conversion onto
+- ~~**Deleting a ref the store no longer names**, which is what a conversion onto
   a repository it made before would have to decide, and which decision 0004's
-  "no remembered correspondence" says is not this tool's job yet.
+  "no remembered correspondence" says is not this tool's job yet.~~ Answered by
+  [decision 0007](0007-a-conversion-onto-what-it-made-before.md): a write
+  deletes a ref it made, still where it left it, that no bookmark is behind —
+  and recreates nothing git deleted.

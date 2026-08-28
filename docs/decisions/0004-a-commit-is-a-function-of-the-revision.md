@@ -125,3 +125,13 @@ which is 0001's rule about stating what could not be carried:
   of a private bookmark under historica's decision 0062.
 - **Whether the stream is kept.** Decision 0002 says a conversion can be asked
   for the stream it sent; this does not yet decide the flag that asks.
+
+## Since
+
+"Filed nowhere" above is now "filed nowhere *for correctness*."
+[Decision 0007](0007-a-conversion-onto-what-it-made-before.md) keeps a
+`<revision> <object ID>` file in the repository — under `.git/historica/`,
+never in the store — so that a second write can name a commit git already has
+rather than send it again. The argument here is untouched: the file is
+derived, deleting it costs a whole write and nothing else, and the store still
+carries no fact about any repository.

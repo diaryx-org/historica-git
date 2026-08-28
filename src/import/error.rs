@@ -42,8 +42,24 @@ pub enum Error {
         /// The path, as far as it can be shown.
         path: String,
     },
-    /// A commit's parent was named by object ID rather than carried.
+    /// A commit's parent was named by object ID rather than carried, and there
+    /// is no repository to ask about it.
     ParentNotCarried,
+    /// A commit's parent was named by object ID, and neither the repository's
+    /// record nor the store's changes say which revision it is.
+    ParentNotHeld {
+        /// The object ID named.
+        oid: String,
+    },
+    /// The path given as a repository holds no `.git`.
+    NotARepository {
+        /// What was given.
+        at: PathBuf,
+    },
+    /// A question asked of git besides the stream went unanswered.
+    Plumbing(crate::plumbing::Error),
+    /// What the repository remembers of earlier conversions could not be read.
+    Remembered(crate::remembered::Error),
     /// A commit's parent had not been converted when the commit arrived, which
     /// means the stream was not in the order git writes.
     ParentNotConverted {
@@ -114,8 +130,20 @@ impl fmt::Display for Error {
             Error::ParentNotCarried => write!(
                 f,
                 "a commit names a parent by object ID — the export covers part of \
-                 a history, and a conversion needs the whole of it"
+                 a history, and a conversion from a stream needs the whole of it"
             ),
+            Error::ParentNotHeld { oid } => write!(
+                f,
+                "a commit stands on {oid}, which the export left out, and neither \
+                 the repository's record nor the store says which revision that is"
+            ),
+            Error::NotARepository { at } => write!(
+                f,
+                "{} holds no `.git`, so there is no repository here to convert",
+                at.display()
+            ),
+            Error::Plumbing(error) => write!(f, "{error}"),
+            Error::Remembered(error) => write!(f, "{error}"),
             Error::ParentNotConverted { mark } => write!(
                 f,
                 "a commit stands on :{}, which has not been converted — the export \
@@ -183,5 +211,17 @@ impl From<historica::store::StoreError> for Error {
 impl From<historica::working::WorkingError> for Error {
     fn from(error: historica::working::WorkingError) -> Self {
         Error::Working(Box::new(error))
+    }
+}
+
+impl From<crate::plumbing::Error> for Error {
+    fn from(error: crate::plumbing::Error) -> Self {
+        Error::Plumbing(error)
+    }
+}
+
+impl From<crate::remembered::Error> for Error {
+    fn from(error: crate::remembered::Error) -> Self {
+        Error::Remembered(error)
     }
 }

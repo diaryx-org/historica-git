@@ -84,9 +84,31 @@ What still does not cross is a message encoding, a submodule, and an annotated
 tag, which is an object with a tagger and a message rather than a pointer. Each
 is reported rather than dropped quietly.
 
-What is not built is anything that keeps the two in step: no remembered
-correspondence, no bookmark named at a converted revision, and no refs crossing
-on the way in.
+Both conversions can be run again onto what they made before —
+[decision 0007](docs/decisions/0007-a-conversion-onto-what-it-made-before.md).
+A second `import` into a folder that already holds a store adds the commits
+the repository has gained, moves the bookmarks git moved, and leaves the folder
+— somebody's working copy by then — for `historica update`. A second `write`
+into a repository names the commits it already holds by object ID and sends
+only the new revisions, moves the refs the store moved, and deletes the ones it
+made that the store no longer names. A branch both sides moved is held back
+and said. The repository keeps the record under `.git/historica/` — two text
+files, `commits` and `refs`, checkable by hand — and the store carries nothing
+about any repository, so it still converges across machines.
+
+```console
+$ historica-git import ~/Code/some-repo ~/Code/some-repo-as-historica
+read 3 commits, recorded 1 revisions in /Users/adam/Code/some-repo-as-historica/history
+
+bookmarks moved to where git has the branch:
+  - main
+
+the folder was left as it was; `historica update` is what brings it forward
+```
+
+What is not built is the rest of the way to seamless: the two directions as one
+command, a store's folder and a repository's working tree as one directory, and
+a run of both around every historica command.
 
 Three decisions everything is written under.
 

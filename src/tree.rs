@@ -70,6 +70,13 @@ impl Tree {
         self.entries.is_empty()
     }
 
+    /// Put an entry at a path, for a tree built from something other than a
+    /// stream — git's own answer to `ls-tree`, when a commit's parent was left
+    /// out of the export.
+    pub fn insert(&mut self, path: Vec<u8>, entry: Entry) {
+        self.entries.insert(path, entry);
+    }
+
     /// Every path at or beneath `prefix`, which is what git means by naming a
     /// directory in a `D`, `R`, or `C`: git has no directories of its own, only
     /// paths that share a beginning.
@@ -90,6 +97,10 @@ pub struct Trees {
     /// Where each ref stands, so that a commit which states no `from` continues
     /// the branch it is committed to, as fast-import says it does.
     references: HashMap<Vec<u8>, Rc<Tree>>,
+    /// Trees by the object ID of the commit that left them, for the commits an
+    /// export named rather than carried. Nothing arrives here from the stream;
+    /// a caller that can ask git seeds it.
+    seeded: HashMap<String, Rc<Tree>>,
 }
 
 impl Default for Trees {
@@ -105,6 +116,39 @@ impl Trees {
             blobs: HashMap::new(),
             marked: HashMap::new(),
             references: HashMap::new(),
+            seeded: HashMap::new(),
+        }
+    }
+
+    /// Tell the replay what a commit the stream only names left behind.
+    ///
+    /// `git fast-export --reference-excluded-parents` states a commit whose
+    /// parent was excluded as a difference against that parent, named by
+    /// object ID. The stream cannot carry that tree; whoever can ask git for
+    /// it hands it in here before the commit that needs it arrives.
+    pub fn seed(&mut self, oid: String, tree: Tree) {
+        self.seeded.insert(oid, Rc::new(tree));
+    }
+
+    /// Whether a commit the stream names by object ID has been seeded.
+    pub fn is_seeded(&self, oid: &str) -> bool {
+        self.seeded.contains_key(oid)
+    }
+
+    /// The tree a commit starts from: its `from`, or the ref it continues.
+    ///
+    /// What a `R` or `D` in the commit is applied to, and so the tree a
+    /// directory rename has to be expanded against. Ask *before* applying the
+    /// commit: applying it moves the ref, and a commit that continues its ref
+    /// would then be answered with its own tree.
+    pub fn parent_of(&self, commit: &Commit) -> Result<Rc<Tree>, Error> {
+        match &commit.from {
+            Some(from) => self.tree_of(from),
+            None => Ok(self
+                .references
+                .get(&commit.reference)
+                .map(Rc::clone)
+                .unwrap_or_default()),
         }
     }
 
@@ -266,7 +310,11 @@ impl Trees {
                 .get(mark)
                 .map(Rc::clone)
                 .ok_or(Error::NoSuchCommit { mark: *mark }),
-            DataRef::Oid(oid) => Err(Error::CommitNotCarried { oid: oid.clone() }),
+            DataRef::Oid(oid) => self
+                .seeded
+                .get(oid)
+                .map(Rc::clone)
+                .ok_or_else(|| Error::CommitNotCarried { oid: oid.clone() }),
         }
     }
 }
