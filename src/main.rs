@@ -34,7 +34,26 @@ fn run(arguments: &[&str]) -> Result<(), String> {
         ["write", ..] => Err(format!(
             "`write` takes a store and a repository to make\n\n{USAGE}"
         )),
+        ["colocate", directory] => colocate(directory),
+        ["colocate", ..] => Err(format!(
+            "`colocate` takes one directory holding a repository or a store\n\n{USAGE}"
+        )),
         [command, ..] => Err(format!("unknown command `{command}`\n\n{USAGE}")),
+    }
+}
+
+fn colocate(directory: &str) -> Result<(), String> {
+    let at = PathBuf::from(directory);
+    let has_git = at.join(".git").exists();
+    let has_store = at.join("history").exists();
+    match (has_git, has_store) {
+        (true, false) => convert(directory, directory),
+        (false, true) | (true, true) => write(directory, directory),
+        (false, false) => Err(format!(
+            "{} holds neither a git repository nor a Historica store; `git init` \
+             or `historica init` starts one",
+            at.display()
+        )),
     }
 }
 
@@ -142,6 +161,7 @@ commands:
 
   import <repository> <folder>   convert <repository> into the store at <folder>
   write  <folder> <repository>   write the store at <folder> out as a git repository
+  colocate <directory>           keep a store and its git projection together
 
 A target that is empty or absent gets a whole conversion. A folder already
 holding a store, or a directory already holding a repository, gets what the

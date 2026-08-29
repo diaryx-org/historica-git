@@ -10,6 +10,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::error;
 use std::fmt;
+use std::fs;
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command as Process, Stdio};
@@ -263,6 +264,43 @@ impl Repository {
         Ok(out.iter().all(|byte| byte.is_ascii_whitespace()))
     }
 
+    /// Keep the store directory out of git without writing a tracked file.
+    /// Existing local exclusions are preserved and the managed line is added
+    /// at most once.
+    pub fn exclude_history(&self) -> Result<(), Error> {
+        let out = self.ask(&["rev-parse", "--git-path", "info/exclude"], &[])?;
+        let named = PathBuf::from(String::from_utf8_lossy(&out).trim());
+        let path = if named.is_absolute() {
+            named
+        } else {
+            self.at.join(named)
+        };
+        let mut contents = match fs::read_to_string(&path) {
+            Ok(contents) => contents,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => String::new(),
+            Err(error) => return Err(Error::Io { path, error }),
+        };
+        if contents.lines().any(|line| line.trim() == "/history/") {
+            return Ok(());
+        }
+        if !contents.is_empty() && !contents.ends_with('\n') {
+            contents.push('\n');
+        }
+        contents.push_str("/history/\n");
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).map_err(|error| Error::Io {
+                path: parent.to_path_buf(),
+                error,
+            })?;
+        }
+        fs::write(&path, contents).map_err(|error| Error::Io { path, error })
+    }
+
+    /// Bring git's index to HEAD without touching the working tree.
+    pub fn reset_index(&self) -> Result<(), Error> {
+        self.run(&["reset", "--quiet", "--mixed"])
+    }
+
     /// Run a git command for its effect, and fail if it did.
     pub fn run(&self, arguments: &[&str]) -> Result<(), Error> {
         self.ask(arguments, &[]).map(|_| ())
@@ -331,6 +369,13 @@ impl Repository {
 pub enum Error {
     /// `git` could not be run at all.
     Spawn(io::Error),
+    /// Git's local administrative files could not be read or written.
+    Io {
+        /// The administrative file being accessed.
+        path: PathBuf,
+        /// What the filesystem reported.
+        error: io::Error,
+    },
     /// git ran and refused.
     Failed {
         /// What was asked.
@@ -357,6 +402,7 @@ impl fmt::Display for Error {
                 "`git` could not be run: {error} — decision 0002 makes it this \
                  crate's one dependency, and it has to be on PATH"
             ),
+            Error::Io { path, error } => write!(f, "{}: {error}", path.display()),
             Error::Failed {
                 command,
                 status,

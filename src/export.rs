@@ -25,6 +25,7 @@ use std::process::{Command as Process, Stdio};
 use historica::core::{ChangeState, RevisionId};
 use historica::store::{Content, STORE_DIR, Store};
 use historica::tree::{Kind, Tree, TreeContest};
+use historica::working::{Rule, Scope};
 
 use crate::carried;
 use crate::plumbing::{Pointed, Repository};
@@ -88,17 +89,22 @@ impl Report {
 
 /// Convert the store under `folder` into the git repository at `repository`.
 ///
-/// An empty or absent target gets `git init` and a whole conversion. A target
+/// An empty or absent target gets `git init` and a whole conversion. Naming the
+/// store's folder as the repository initializes git around the existing files
+/// and updates only its index. A target
 /// holding a repository gets what the store has gained since it was last
 /// written — or, for a repository this tool never wrote, every commit and no
 /// ref that git already has pointing elsewhere. Anything else is refused, for
 /// the reason import's target must be free: a conversion only writes where it
 /// can be sure it owns everything it touches.
 pub fn to_repository(folder: &Path, repository: &Path) -> Result<Report, Error> {
+    let colocated = folder == repository;
     let (repository, onto) = match Repository::at(repository) {
         Some(existing) => (existing, true),
         None => {
-            free(repository)?;
+            if !colocated {
+                free(repository)?;
+            }
             std::fs::create_dir_all(repository).map_err(|error| Error::io(repository, error))?;
             let started = Process::new("git")
                 .arg("-C")
@@ -119,6 +125,15 @@ pub fn to_repository(folder: &Path, repository: &Path) -> Result<Report, Error> 
             (made, false)
         }
     };
+
+    if colocated {
+        let mut store = Store::open(folder.join(STORE_DIR))?;
+        store.add_skipped(&[
+            Rule::private(Scope::Under(".git".to_owned())),
+            Rule::private(Scope::Path(".git".to_owned())),
+        ])?;
+        repository.exclude_history()?;
+    }
 
     let git_dir = repository.git_dir()?;
     let mut commits = Commits::read(&git_dir)?;
@@ -224,7 +239,9 @@ pub fn to_repository(folder: &Path, repository: &Path) -> Result<Report, Error> 
 
     let mut report = std::mem::take(&mut written.report);
     report.onto = onto;
-    if onto {
+    if colocated {
+        colocated_index(&repository, &written, onto, &mut report)?;
+    } else if onto {
         // An existing repository has a HEAD of its own; `branch` is only what
         // the working tree was actually brought up to.
         report.branch = None;
@@ -233,6 +250,31 @@ pub fn to_repository(folder: &Path, repository: &Path) -> Result<Report, Error> 
         check_out(&repository, &mut report)?;
     }
     Ok(report)
+}
+
+/// Point a new colocated repository at the chosen branch, or refresh an
+/// existing one's index only when HEAD is one of the refs this conversion
+/// brought into agreement. The working tree is never written.
+fn colocated_index(
+    repository: &Repository,
+    written: &Written,
+    onto: bool,
+    report: &mut Report,
+) -> Result<(), Error> {
+    let mut head = repository.head()?;
+    if !onto && let Some(branch) = report.branch.clone() {
+        let reference = format!("{HEADS}{branch}");
+        repository.run(&["symbolic-ref", "HEAD", &reference])?;
+        head = Some(reference);
+    }
+    report.branch = None;
+    let Some(head) = head else { return Ok(()) };
+    if written.deleted.contains(&head) || !written.ours.contains_key(&head) {
+        return Ok(());
+    }
+    repository.reset_index()?;
+    report.branch = head.strip_prefix(HEADS).map(str::to_owned);
+    Ok(())
 }
 
 /// Point HEAD at a branch and put the files in the folder.

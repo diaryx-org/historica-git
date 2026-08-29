@@ -106,9 +106,22 @@ bookmarks moved to where git has the branch:
 the folder was left as it was; `historica update` is what brings it forward
 ```
 
-What is not built is the rest of the way to seamless: the two directions as one
-command, a store's folder and a repository's working tree as one directory, and
-a run of both around every historica command.
+The store and repository can instead share one working directory — [decision
+0008](docs/decisions/0008-one-directory-and-git-derived-in-it.md):
+
+```console
+$ historica-git colocate ~/Code/some-repo
+```
+
+`colocate` builds whichever half is missing and never checks out over the
+files. Historica owns the working copy; git's commits, refs, and index are a
+local projection for `git log`, `git diff`, `git blame`, and editor tooling.
+Git writes are detected rather than silently absorbed. An explicit
+`historica-git import <directory> <directory>` adopts them and gives git's
+crossed refs precedence.
+
+What is not built is the remaining run of both directions around every
+historica command.
 
 Three decisions everything is written under.
 

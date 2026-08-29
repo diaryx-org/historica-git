@@ -30,7 +30,7 @@ use historica::core::{ChangeState, History, RevisionId};
 use historica::format::Timestamp;
 use historica::record::{self, Recording, Restriction};
 use historica::store::{Bookmark, Name, STORE_DIR, Store, StoreError};
-use historica::working::{Skipped, Working};
+use historica::working::{Rule, Scope, Skipped, Working};
 
 use crate::carried;
 use crate::identity::Identity;
@@ -80,9 +80,11 @@ impl Report {
 
 /// Convert the repository at `repository` into the store under `folder`.
 ///
-/// A folder holding no store gets a fresh one and ends as the last commit
-/// left it. A folder holding a store this tool made before gets what the
-/// repository has gained since, and nothing else about it is touched.
+/// A folder holding no store gets a fresh one and ends as the last commit left
+/// it. When repository and folder are the same path, commits are replayed in
+/// scratch space and the existing working tree is never touched. A folder
+/// holding a store this tool made before gets what the repository has gained
+/// since, and nothing else about it is touched.
 ///
 /// Runs `git fast-export` and reads what it writes. The flags are decision
 /// 0002's and 0003's: `-M` so a rename arrives as a rename,
@@ -95,11 +97,14 @@ pub fn from_repository(repository: &Path, folder: &Path) -> Result<Report, Error
         at: repository.to_path_buf(),
     })?;
     let onto = folder.join(STORE_DIR).exists();
+    let colocated = repository.path() == folder;
 
     let mut store = if onto {
         Store::open(folder.join(STORE_DIR))?
     } else {
-        folder::must_be_free(folder)?;
+        if !colocated {
+            folder::must_be_free(folder)?;
+        }
         fs::create_dir_all(folder).map_err(|error| Error::io(folder, error))?;
         Store::init(folder.join(STORE_DIR))?
     };
@@ -160,7 +165,7 @@ pub fn from_repository(repository: &Path, folder: &Path) -> Result<Report, Error
     // A second conversion materialises each commit somewhere of its own. The
     // folder beside the store is a person's working copy by now, and historica's
     // 0029 keeps working folders outside a receive; this is the same rule.
-    let scratch = onto.then(Scratch::make).transpose()?;
+    let scratch = (onto || colocated).then(Scratch::make).transpose()?;
     let materialise_in = match &scratch {
         Some(scratch) => scratch.path().to_path_buf(),
         None => folder.to_path_buf(),
@@ -174,6 +179,7 @@ pub fn from_repository(repository: &Path, folder: &Path) -> Result<Report, Error
         known,
         Some(&repository),
         Some(current),
+        colocated,
     );
     drop(scratch);
 
@@ -206,6 +212,15 @@ pub fn from_repository(repository: &Path, folder: &Path) -> Result<Report, Error
     }
     Refs::write(&git_dir, &left)?;
 
+    if colocated {
+        store.add_skipped(&[
+            Rule::private(Scope::Under(".git".to_owned())),
+            Rule::private(Scope::Path(".git".to_owned())),
+        ])?;
+        repository.exclude_history()?;
+        repository.reset_index()?;
+    }
+
     let mut report = converted.report;
     report.onto = onto;
     Ok(report)
@@ -227,7 +242,7 @@ pub fn from_stream<R: BufRead>(input: R, folder: &Path) -> Result<Report, Error>
         refs: Refs::none(),
         history: store.history(),
     };
-    convert(input, &mut store, folder, known, None, None).map(|converted| converted.report)
+    convert(input, &mut store, folder, known, None, None, false).map(|converted| converted.report)
 }
 
 /// What a conversion leaves for the repository's record, beside its report.
@@ -310,9 +325,11 @@ fn convert<R: BufRead>(
     known: Known,
     repository: Option<&Repository>,
     current: Option<BTreeMap<String, Pointed>>,
+    git_wins: bool,
 ) -> Result<Converted, Error> {
     let mut conversion = Conversion {
         repository,
+        git_wins,
         folder: folder.to_path_buf(),
         trees: Trees::new(),
         written: Rc::new(Tree::default()),
@@ -434,6 +451,9 @@ fn convert<R: BufRead>(
 struct Conversion<'a> {
     /// The repository, where there is one to ask questions of.
     repository: Option<&'a Repository>,
+    /// An explicit import naming one colocated directory resolves crossed refs
+    /// in git's favour, even if the store moved too.
+    git_wins: bool,
     folder: PathBuf,
     trees: Trees,
     /// What is on disk right now, so that materialising the next commit writes
@@ -790,6 +810,9 @@ impl Conversion<'_> {
         standing: RevisionId,
         arriving: RevisionId,
     ) -> Result<(), String> {
+        if self.git_wins {
+            return Ok(());
+        }
         // A remembered commit that resolves to no revision — the record names
         // a commit neither side can place — is a record that answers nothing,
         // and is treated as absent rather than read as both sides having moved.

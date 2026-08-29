@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 use historica::core::RevisionId;
 use historica::record::{self, Platform, Recording, Restriction};
 use historica::store::{Name, STORE_DIR, Store};
-use historica::working::{Skipped, Working};
+use historica::working::Working;
 use historica_git::{export, import};
 
 fn folder(name: &str) -> PathBuf {
@@ -100,7 +100,7 @@ fn record(folder: &Path, name: &str, message: &str) -> RevisionId {
     let heads = store.history().heads();
     assert_eq!(heads.len(), 1, "the store should have one head: {heads:?}");
     fs::write(folder.join(name), format!("{name}\n")).expect("a file");
-    let working = Working::read(folder, &Skipped::none()).expect("the folder reads");
+    let working = Working::read(folder, store.skipped()).expect("the folder reads");
     let recording = Recording {
         parents: heads.into_iter().collect(),
         author: "Ada <ada@example.com>".to_owned(),
@@ -547,4 +547,87 @@ fn a_sha256_repository_is_written_onto() {
     let written = export::to_repository(&store, &repo).expect("the write");
     assert_eq!(written.commits, 1, "{written:?}");
     assert!(!references(&repo).contains_key("refs/historica/staging"));
+}
+
+/// Adopting an existing checkout replays in scratch space: staged, unstaged,
+/// and untracked work all survive byte for byte.
+#[test]
+fn colocating_a_repository_preserves_its_working_tree() {
+    let Some(_) = git() else { return };
+    let at = folder("colocate-repository");
+    build(&at);
+    fs::write(at.join("a.txt"), "unstaged\n").expect("an edit");
+    fs::write(at.join("b.txt"), "staged\n").expect("an edit");
+    run(&at, &["add", "b.txt"]);
+    fs::write(at.join("mine.txt"), "untracked\n").expect("an edit");
+    let before = run(&at, &["status", "--porcelain"]);
+
+    let report = import::from_repository(&at, &at).expect("the colocated import");
+    assert_eq!(report.revisions, 2, "{report:?}");
+    assert_eq!(fs::read_to_string(at.join("a.txt")).unwrap(), "unstaged\n");
+    assert_eq!(fs::read_to_string(at.join("b.txt")).unwrap(), "staged\n");
+    assert_eq!(
+        fs::read_to_string(at.join("mine.txt")).unwrap(),
+        "untracked\n"
+    );
+    assert_eq!(
+        run(&at, &["status", "--porcelain"]),
+        "M a.txt\n M b.txt\n?? mine.txt",
+        "the bytes survive and the derived index is reset to HEAD; before was {before:?}"
+    );
+    let exclude = fs::read_to_string(at.join(".git/info/exclude")).expect("the exclude");
+    assert_eq!(
+        exclude.lines().filter(|line| *line == "/history/").count(),
+        1
+    );
+    let store = Store::open(at.join(STORE_DIR)).expect("the store opens");
+    assert!(
+        store
+            .skipped()
+            .rules()
+            .any(|rule| rule.to_string() == "private .git")
+    );
+    assert!(
+        store
+            .skipped()
+            .rules()
+            .any(|rule| rule.to_string() == "private .git/")
+    );
+}
+
+/// A repository derived around a store claims only git's index. Files that
+/// differ from the recorded revision remain as Historica working-copy edits.
+#[test]
+fn colocating_a_store_never_checks_out_files() {
+    let Some(_) = git() else { return };
+    let origin = folder("colocate-store-origin");
+    build(&origin);
+    let at = folder("colocate-store");
+    import::from_repository(&origin, &at).expect("the import");
+    fs::write(at.join("a.txt"), "mine\n").expect("an edit");
+
+    let report = export::to_repository(&at, &at).expect("the colocated write");
+    assert_eq!(fs::read_to_string(at.join("a.txt")).unwrap(), "mine\n");
+    assert_eq!(report.branch.as_deref(), Some("main"), "{report:?}");
+    assert!(run(&at, &["status", "--porcelain"]).contains("a.txt"));
+}
+
+/// Naming the colocated directory explicitly is the resolution: git's branch
+/// wins even if its bookmark moved independently since the last agreement.
+#[test]
+fn explicit_colocated_import_gives_git_precedence() {
+    let Some(_) = git() else { return };
+    let at = folder("colocate-import-wins");
+    build(&at);
+    import::from_repository(&at, &at).expect("the colocated import");
+    let git_commit = commit(&at, "git.txt", "In git");
+    record(&at, "store.txt", "In the store");
+
+    let report = import::from_repository(&at, &at).expect("the explicit import");
+    assert_eq!(report.moved, vec!["main".to_owned()], "{report:?}");
+    let (_, refs) = record_files(&at);
+    assert!(
+        refs.contains(&format!("refs/heads/main {git_commit}")),
+        "{refs}"
+    );
 }
