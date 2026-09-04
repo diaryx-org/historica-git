@@ -44,7 +44,7 @@ repository = "https://github.com/diaryx-org/historica-git"
 # The consequence is deliberate. This repository builds against a historica that
 # has been published and no other, so a change over there arrives here when it
 # is released and bumped, and never before.
-historica = {version = "1.0.0-rc.1"}
+historica = {version = "1.0.0-rc.2"}
 # Decision 0003 derives a file identifier as `SHA-256` of the commit's object ID
 # and a counter, so that a conversion re-run produces the store it produced
 # before. It is the hash historica already uses, and the derivation is one a
