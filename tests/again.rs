@@ -631,3 +631,46 @@ fn explicit_colocated_import_gives_git_precedence() {
         "{refs}"
     );
 }
+
+/// A ref that is neither a branch nor a tag is a fact about somewhere else
+/// (decision 0006), and so is everything reachable only through it. An
+/// editor that checkpoints under a ref directory of its own writes parentless
+/// snapshot commits there, and each one `--all` brought across became a root:
+/// a store with one root per checkpoint cannot record a merge, because every
+/// path in it was placed once per root. Branches and tags are the history.
+#[test]
+fn a_ref_that_is_neither_branch_nor_tag_brings_no_commits() {
+    let Some(_) = git() else { return };
+    let at = folder("elsewhere-repository");
+    build(&at);
+    // A parentless commit of the same tree, under a tool's own ref directory.
+    let tree = run(&at, &["write-tree"]);
+    let checkpoint = run(&at, &["commit-tree", &tree, "-m", "checkpoint"]);
+    run(
+        &at,
+        &[
+            "update-ref",
+            "refs/t3/checkpoints/session/turn/1",
+            &checkpoint,
+        ],
+    );
+    assert_eq!(commits(&at).len(), 3, "git holds the checkpoint too");
+
+    let into = folder("elsewhere-store");
+    let report = import::from_repository(&at, &into).expect("the import");
+    assert_eq!(report.commits, 2, "the two on main, and not the checkpoint");
+    assert_eq!(report.revisions, 2, "{report:?}");
+    assert_eq!(report.bookmarks, vec!["main".to_owned()]);
+    assert!(
+        report
+            .uncarried
+            .iter()
+            .any(|line| line.contains("refs/t3/checkpoints/session/turn/")),
+        "the ref is reported as somewhere else: {:?}",
+        report.uncarried
+    );
+
+    let store = Store::open(into.join(STORE_DIR)).expect("the store opens");
+    let heads = store.history().heads();
+    assert_eq!(heads.len(), 1, "one root, one head: {heads:?}");
+}

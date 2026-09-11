@@ -31,7 +31,11 @@ to be written into both designs already.
   and whatever else a repository keeps are facts about somewhere else. A
   bookmark claiming otherwise would be this tool deciding what somebody's
   remote-tracking ref meant. They are reported by directory, so a hundred of
-  them are one line.
+  them are one line. *Amended:* nor does what is reachable only through one
+  cross. The export asks git for branches and tags, not for every ref, after
+  `--all` carried an editor's checkpoint refs — a parentless snapshot commit
+  under each — into a store as one root per checkpoint, which no merge could
+  then be recorded over.
 
 - **Historica decides what a bookmark may be called, and this reports what it
   decided.** A name is refused rather than rewritten, because a name spelled

@@ -117,13 +117,21 @@ pub fn from_repository(repository: &Path, folder: &Path) -> Result<Report, Error
     };
     let current = repository.refs()?;
 
+    // Branches and tags, and not `--all`. Decision 0006: a ref that is neither
+    // is a fact about somewhere else, and so is everything reachable only
+    // through it. `--all` brought that along as history — a tool's checkpoint
+    // refs, each at a parentless snapshot commit, arrived as one root per
+    // ref, and a store with eight roots cannot record a merge over any path
+    // they all placed.
+    //
     // Every ref whose commit the store already holds is excluded from the
     // export, and with it everything beneath. A held commit that is reachable
     // only through a ref that has since moved on still arrives, and is
     // recognised when it does.
     let mut arguments = vec![
         "fast-export".to_owned(),
-        "--all".to_owned(),
+        "--branches".to_owned(),
+        "--tags".to_owned(),
         "-M".to_owned(),
         "--show-original-ids".to_owned(),
         "--reencode=yes".to_owned(),
@@ -415,6 +423,14 @@ fn convert<R: BufRead>(
                 if reference.starts_with("refs/tags/") {
                     conversion.tags += 1;
                 }
+                continue;
+            }
+            // Neither a branch nor a tag was asked of the export, so its
+            // commit is not dangling: it was never meant to arrive. It is
+            // reported by directory, as decision 0006 says, and not counted
+            // as a ref the stream failed to deliver.
+            if !reference.starts_with("refs/heads/") && !reference.starts_with("refs/tags/") {
+                conversion.elsewhere.insert(elsewhere(&reference));
                 continue;
             }
             match conversion.resolve(&pointed.commit) {
