@@ -34,6 +34,7 @@ historica-git has not been released, and cannot be until historica is: decision
 - **carried** — carry the committer and the signature across as headers ([`5090b85`](https://github.com/diaryx-org/historica-git/commit/5090b8510e3df210f3fc536015f3aacb643445cb))
 - **naming** — cross a ref that is only a pointer ([`f3f4f9a`](https://github.com/diaryx-org/historica-git/commit/f3f4f9aa37290676e02499fd564393b85b640b31))
 - **remembered** — run a conversion again onto what it made before ([`c4e5aee`](https://github.com/diaryx-org/historica-git/commit/c4e5aee448c37ce9a637e3be13b221f6e74229c3))
+- **colocation** — derive git in the store folder ([`a37e412`](https://github.com/diaryx-org/historica-git/commit/a37e412e11f222a0b3ae7b56044685239646b1b4))
 
 ### Added
 
@@ -49,6 +50,7 @@ historica-git has not been released, and cannot be until historica is: decision
 
 - **stream** — read the object ID a tag carries ([`ff8e64c`](https://github.com/diaryx-org/historica-git/commit/ff8e64caa69107692bad6f57d496b53a2b20b961))
 - **import** — state no kind, which is what git has to say about one ([`28eb29d`](https://github.com/diaryx-org/historica-git/commit/28eb29d61e4c27baf20704eb89fa94392d27c6b0))
+- **import** — export branches and tags, not every ref ([`de2a8a7`](https://github.com/diaryx-org/historica-git/commit/de2a8a7cb0d52c9a3c7ce6141a8718cf47aa13cc))
 
 ### Changed
 
@@ -117,5 +119,11 @@ historica-git has not been released, and cannot be until historica is: decision
 - a directory rename in an imported commit is expanded against the commit's own parent tree rather than against the last tree materialised in stream order, which was another branch's whenever the stream switched branches.
 
 - `import::from_repository` on a path holding no `.git` fails with `NotARepository` rather than with git's own `fast-export` error.
+
+- historica-git colocate now builds a missing store or git projection in place without checking out over the working files.
+
+- Passing the same directory to import adopts git crossed refs even when their Historica bookmarks also moved; passing it to write initializes or refreshes only git derived state and index.
+
+- A commit reachable only through a ref outside `refs/heads/` and `refs/tags/` — a remote-tracking ref, a note, an editor's checkpoint — is no longer converted into a revision. A store made from such a repository holds fewer roots than before, and a conversion run again onto a store made earlier does not remove the roots that earlier run wrote.
 
 <!-- git-cliff:end -->
