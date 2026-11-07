@@ -77,13 +77,24 @@ impl Tree {
         self.entries.insert(path, entry);
     }
 
-    /// Every path at or beneath `prefix`, which is what git means by naming a
-    /// directory in a `D`, `R`, or `C`: git has no directories of its own, only
+    /// What a `D`, `R`, or `C` of this path takes.
+    ///
+    /// A path that names a file takes that file. Anything else is a directory,
+    /// and takes every path beneath it: git has no directories of its own, only
     /// paths that share a beginning.
-    fn beneath(&self, prefix: &[u8]) -> Vec<Vec<u8>> {
+    ///
+    /// A file and paths beneath it can only stand together halfway through a
+    /// commit, and only one way. `git fast-export` writes deepest path first, so
+    /// a commit that replaces the file `p` with a folder states `M p/q` and then
+    /// `D p` or `R p old`. That names what the commit started from, the file;
+    /// the folder it has just written is not part of it.
+    fn named(&self, path: &[u8]) -> Vec<Vec<u8>> {
+        if self.entries.contains_key(path) {
+            return vec![path.to_vec()];
+        }
         self.entries
             .keys()
-            .filter(|path| at_or_beneath(path, prefix))
+            .filter(|held| at_or_beneath(held, path))
             .cloned()
             .collect()
     }
@@ -251,7 +262,7 @@ impl Trees {
                 );
             }
             Change::Delete { path } => {
-                for held in tree.beneath(path) {
+                for held in tree.named(path) {
                     tree.entries.remove(&held);
                 }
             }
@@ -259,7 +270,7 @@ impl Trees {
                 source,
                 destination,
             } => {
-                for path in tree.beneath(source) {
+                for path in tree.named(source) {
                     let entry = tree.entries.remove(&path).expect("just listed");
                     tree.entries
                         .insert(rebase(&path, source, destination), entry);
@@ -269,7 +280,7 @@ impl Trees {
                 source,
                 destination,
             } => {
-                for path in tree.beneath(source) {
+                for path in tree.named(source) {
                     let entry = tree.entries.get(&path).expect("just listed").clone();
                     tree.entries
                         .insert(rebase(&path, source, destination), entry);
