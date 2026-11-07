@@ -2,8 +2,8 @@
 title: Tasks
 description: Deferred work in historica-git — one file each, every one with a done state
 created: 2026-09-02
-updated: 2026-10-13
-contents: []
+updated: 2026-11-07
+contents: ['[A file replaced by a folder takes the folder with it](/historica-git/docs/tasks/a-file-replaced-by-a-folder-takes-the-folder-with-it.md)']
 ---
 
 # Tasks
