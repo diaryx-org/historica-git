@@ -2,11 +2,19 @@
 title: A file replaced by a folder takes the folder with it
 part_of: '[Tasks](/historica-git/docs/tasks/tasks.md)'
 created: 2026-11-07
-status: open
+updated: 2026-11-07
+status: done
 description: A commit that turns the file `p` into a folder `p/` imports without what it put in the folder, and says nothing, because the stream states `M p/q` before `D p` and the replay takes them in that order; moving the file aside instead fails the import
 ---
 
 # A file replaced by a folder takes the folder with it
+
+**Status.** Done, by `fix(import): keep what a commit wrote beneath a file it
+replaced`. A `D`, `R` or `C` that names a file now takes that file and not the
+paths beneath it, in `Tree::named`. Changes stay in the order the stream states
+them, which the experiment under *What was tried* gave up: it would have read
+`M a` then `R a b` the wrong way round. A store imported before this keeps the
+commits it lost; a fresh import is the remedy.
 
 A commit that replaces a file with a folder of the same name loses the folder's
 contents on `import`. The import exits 0 and reports nothing under what did not

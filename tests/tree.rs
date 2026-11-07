@@ -277,3 +277,162 @@ fn a_stream_that_cannot_be_replayed_says_which_flag_wrote_it() {
         "expected a missing parent, found {orphan}"
     );
 }
+
+/// `git fast-export` states a folder's new files before the delete of the file
+/// it replaces, deepest path first.
+#[test]
+fn a_delete_of_a_file_leaves_what_the_commit_wrote_beneath_its_path() {
+    let trees = replay_text(
+        "blob\n\
+         mark :1\n\
+         data 2\n\
+         a\n\
+         blob\n\
+         mark :2\n\
+         data 2\n\
+         b\n\
+         commit refs/heads/main\n\
+         mark :3\n\
+         committer Bo <bo@example.com> 100 +0000\n\
+         data 5\n\
+         first\n\
+         M 100644 :1 p\n\
+         commit refs/heads/main\n\
+         mark :4\n\
+         committer Bo <bo@example.com> 200 +0000\n\
+         data 6\n\
+         second\n\
+         from :3\n\
+         M 100644 :2 p/q\n\
+         D p\n",
+    );
+    assert_eq!(listed(&trees["second"]), vec!["100644 p/q"]);
+}
+
+/// The same order with `R`: only the file moves.
+#[test]
+fn a_rename_of_a_file_leaves_what_the_commit_wrote_beneath_its_path() {
+    let trees = replay_text(
+        "blob\n\
+         mark :1\n\
+         data 2\n\
+         a\n\
+         blob\n\
+         mark :2\n\
+         data 2\n\
+         b\n\
+         commit refs/heads/main\n\
+         mark :3\n\
+         committer Bo <bo@example.com> 100 +0000\n\
+         data 5\n\
+         first\n\
+         M 100644 :1 p\n\
+         commit refs/heads/main\n\
+         mark :4\n\
+         committer Bo <bo@example.com> 200 +0000\n\
+         data 6\n\
+         second\n\
+         from :3\n\
+         M 100644 :2 p/q\n\
+         R p old\n",
+    );
+    assert_eq!(listed(&trees["second"]), vec!["100644 old", "100644 p/q"]);
+    assert_eq!(bytes_at(&trees["second"], "old"), b"a\n");
+}
+
+/// The same order with `C`: only the file is copied.
+#[test]
+fn a_copy_of_a_file_leaves_what_the_commit_wrote_beneath_its_path() {
+    let trees = replay_text(
+        "blob\n\
+         mark :1\n\
+         data 2\n\
+         a\n\
+         blob\n\
+         mark :2\n\
+         data 2\n\
+         b\n\
+         commit refs/heads/main\n\
+         mark :3\n\
+         committer Bo <bo@example.com> 100 +0000\n\
+         data 5\n\
+         first\n\
+         M 100644 :1 p\n\
+         commit refs/heads/main\n\
+         mark :4\n\
+         committer Bo <bo@example.com> 200 +0000\n\
+         data 6\n\
+         second\n\
+         from :3\n\
+         M 100644 :2 p/q\n\
+         C p old\n\
+         D p\n",
+    );
+    assert_eq!(listed(&trees["second"]), vec!["100644 old", "100644 p/q"]);
+    assert_eq!(bytes_at(&trees["second"], "old"), b"a\n");
+}
+
+/// A commit's changes keep the order they were stated in: a rename ahead of a
+/// write to its source reads the old file.
+#[test]
+fn a_rename_reads_the_old_file_when_a_new_one_follows_it() {
+    let trees = replay_text(
+        "blob\n\
+         mark :1\n\
+         data 2\n\
+         a\n\
+         blob\n\
+         mark :2\n\
+         data 2\n\
+         b\n\
+         commit refs/heads/main\n\
+         mark :3\n\
+         committer Bo <bo@example.com> 100 +0000\n\
+         data 5\n\
+         first\n\
+         M 100644 :1 p\n\
+         commit refs/heads/main\n\
+         mark :4\n\
+         committer Bo <bo@example.com> 200 +0000\n\
+         data 6\n\
+         second\n\
+         from :3\n\
+         R p old\n\
+         M 100644 :2 p\n",
+    );
+    assert_eq!(listed(&trees["second"]), vec!["100644 old", "100644 p"]);
+    assert_eq!(bytes_at(&trees["second"], "old"), b"a\n");
+    assert_eq!(bytes_at(&trees["second"], "p"), b"b\n");
+}
+
+/// And a rename behind a write to its source reads what was written, as
+/// fast-import does.
+#[test]
+fn a_rename_reads_the_new_file_when_a_write_comes_before_it() {
+    let trees = replay_text(
+        "blob\n\
+         mark :1\n\
+         data 2\n\
+         a\n\
+         blob\n\
+         mark :2\n\
+         data 2\n\
+         b\n\
+         commit refs/heads/main\n\
+         mark :3\n\
+         committer Bo <bo@example.com> 100 +0000\n\
+         data 5\n\
+         first\n\
+         M 100644 :1 p\n\
+         commit refs/heads/main\n\
+         mark :4\n\
+         committer Bo <bo@example.com> 200 +0000\n\
+         data 6\n\
+         second\n\
+         from :3\n\
+         M 100644 :2 p\n\
+         R p old\n",
+    );
+    assert_eq!(listed(&trees["second"]), vec!["100644 old"]);
+    assert_eq!(bytes_at(&trees["second"], "old"), b"b\n");
+}

@@ -1043,3 +1043,120 @@ fn a_colocated_store_skips_what_git_ignores() {
     let again = import::from_repository(&at, &at).expect("the import again");
     assert!(again.skipped.is_empty(), "{again:?}");
 }
+
+/// Commit everything in `at` as it stands now.
+fn commit_all(at: &Path, message: &str) {
+    run(at, &["add", "-A"]);
+    run(at, &["commit", "--quiet", "-m", message]);
+}
+
+/// A repository whose one commit holds the file `p`.
+fn a_file_at_p(name: &str) -> PathBuf {
+    let origin = folder(name);
+    fs::create_dir_all(&origin).expect("a fresh directory");
+    run(&origin, &["init", "--quiet", "--initial-branch=main", "."]);
+    run(&origin, &["config", "commit.gpgsign", "false"]);
+    fs::write(origin.join("p"), "a file\n").expect("a file");
+    commit_all(&origin, "A file");
+    origin
+}
+
+/// Put `p/q` where the file `p` was, which is the same change however the file
+/// left.
+fn a_folder_at_p(origin: &Path) {
+    fs::create_dir_all(origin.join("p")).expect("a folder");
+    fs::write(origin.join("p/q"), "in the folder\n").expect("a file");
+}
+
+/// Import `origin` and write it out again, holding the two to the identity the
+/// README states, and hand back the store's folder.
+fn comes_back_the_same(origin: &Path, name: &str) -> PathBuf {
+    let store = folder(&format!("{name}-store"));
+    import::from_repository(origin, &store).expect("the import");
+    let repo = folder(&format!("{name}-repo"));
+    export::to_repository(&store, &repo).expect("the write");
+    assert_eq!(commits(&repo), commits(origin), "decision 0004's identity");
+    store
+}
+
+/// `git fast-export` writes what the commit put in the folder before it deletes
+/// the file, and the delete names only the file.
+#[test]
+fn a_file_replaced_by_a_folder_comes_back() {
+    let Some(_) = git() else { return };
+    let origin = a_file_at_p("folder-over-file-origin");
+    fs::remove_file(origin.join("p")).expect("the file goes");
+    a_folder_at_p(&origin);
+    commit_all(&origin, "A folder");
+
+    let store = comes_back_the_same(&origin, "folder-over-file");
+    assert_eq!(
+        fs::read_to_string(store.join("p/q")).expect("the folder crossed"),
+        "in the folder\n"
+    );
+}
+
+/// The same stream with `R p old` where the `D p` was: the rename carries the
+/// file, and only the file.
+#[test]
+fn a_file_moved_aside_for_a_folder_comes_back() {
+    let Some(_) = git() else { return };
+    let origin = a_file_at_p("folder-after-move-origin");
+    run(&origin, &["mv", "p", "old"]);
+    a_folder_at_p(&origin);
+    commit_all(&origin, "A folder");
+
+    let store = comes_back_the_same(&origin, "folder-after-move");
+    assert_eq!(
+        fs::read_to_string(store.join("old")).expect("the file moved"),
+        "a file\n"
+    );
+    assert_eq!(
+        fs::read_to_string(store.join("p/q")).expect("the folder crossed"),
+        "in the folder\n"
+    );
+}
+
+/// `R p p/q`, after an `M p/r` this commit wrote: the file goes beneath the path
+/// it left, and what is already there stays.
+#[test]
+fn a_file_moved_into_a_folder_of_its_own_name_comes_back() {
+    let Some(_) = git() else { return };
+    let origin = a_file_at_p("file-into-own-folder-origin");
+    run(&origin, &["mv", "p", "held"]);
+    fs::create_dir_all(origin.join("p")).expect("a folder");
+    run(&origin, &["mv", "held", "p/q"]);
+    fs::write(origin.join("p/r"), "beside it\n").expect("a file");
+    commit_all(&origin, "Into the folder");
+
+    let store = comes_back_the_same(&origin, "file-into-own-folder");
+    assert_eq!(
+        fs::read_to_string(store.join("p/q")).expect("the file moved"),
+        "a file\n"
+    );
+    assert_eq!(
+        fs::read_to_string(store.join("p/r")).expect("the folder crossed"),
+        "beside it\n"
+    );
+}
+
+/// A rename out of a path that a new file then takes: the rename has to read
+/// the old file and the path has to end up with the new one.
+#[test]
+fn a_file_moved_and_written_anew_comes_back() {
+    let Some(_) = git() else { return };
+    let origin = a_file_at_p("moved-and-written-anew-origin");
+    run(&origin, &["mv", "p", "old"]);
+    fs::write(origin.join("p"), "another file\n").expect("a file");
+    commit_all(&origin, "Moved and written anew");
+
+    let store = comes_back_the_same(&origin, "moved-and-written-anew");
+    assert_eq!(
+        fs::read_to_string(store.join("old")).expect("the file moved"),
+        "a file\n"
+    );
+    assert_eq!(
+        fs::read_to_string(store.join("p")).expect("the new file"),
+        "another file\n"
+    );
+}
