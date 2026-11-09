@@ -2,8 +2,8 @@
 title: Tasks
 description: Deferred work in historica-git — one file each, every one with a done state
 created: 2026-09-02
-updated: 2026-11-07
-contents: []
+updated: 2026-11-08
+contents: ['[A signed commit''s encoding is read out of git''s order](/historica-git/docs/tasks/a-signature-and-an-encoding-come-in-gits-order.md)']
 ---
 
 # Tasks
